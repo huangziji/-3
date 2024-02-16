@@ -19,7 +19,8 @@ float map(vec3 pos)
 {
     float d = pos.y + .5;
     float d2 = length(pos) - .5;
-    return min(d, d2);
+    d = min(d, d2);
+    return d;
 }
 
 vec3 calcNormal(vec3 pos)
