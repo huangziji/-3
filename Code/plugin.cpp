@@ -32,21 +32,17 @@ extern "C" void mainAnimation(Soup & V)
 
         aabbTree.BuildBvh(V);
 
-        vector<uint> const& F = aabbTree.triIdx;
-        vector<Node> const& N = aabbTree.bvhNode;
-        printf("F : %ld\n", F.size());
-        printf("V : %ld\n", V.size());
-
-        GLuint ssbo1, ssbo2;
         vector<vec4> U;
-        for (int i=0; i<V.size(); i+=3)
+        vector<Node> const& N = aabbTree.bvhNode;
+        printf("V : %ld\n", V.size());
+        for (auto & t : aabbTree.tri)
         {
-            int k = F[i/3]*3; // reorder triangles to match BVH
-            U << vec4(V[k+0], 1);
-            U << vec4(V[k+1], 1);
-            U << vec4(V[k+2], 1);
+            U << vec4(t.vertex0, 1);
+            U << vec4(t.vertex1, 1);
+            U << vec4(t.vertex2, 1);
         }
 
+        GLuint ssbo1, ssbo2;
         glGenBuffers(1, &ssbo1);
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo1);
         glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof U[0] * U.size(), U.data(), GL_STATIC_DRAW);
