@@ -1,4 +1,4 @@
-#version 300 es
+#version 320 es
 precision mediump float;
 
 float saturate(float a)
@@ -15,6 +15,49 @@ mat3 setCamera(in vec3 ro, in vec3 ta, float cr)
     return mat3(cu, cv, cw);
 }
 
+vec2 castRay(vec3 ro, vec3 rd);
+
+uniform sampler2D iChannel1, iChannel2;
+uniform vec2 iResolution;
+uniform float iTime;
+out vec4 fragColor;
+void main()
+{
+    vec2 screenUV = gl_FragCoord.xy/iResolution.xy;
+    vec4 gb = texture2D(iChannel2, screenUV);
+
+    float ti = iTime;
+    vec2 uv = (2.0*gl_FragCoord.xy-iResolution.xy) / iResolution.y;
+    vec3 ta = vec3(-1,0,0);
+    vec3 ro = ta + vec3(cos(ti),0.5,sin(ti)) * 2.5;
+    mat3 ca = setCamera(ro, ta, 0.0);
+    vec3 rd = ca * normalize(vec3(uv, 1.2));
+
+    vec3 nor = gb.xyz;
+    vec2 res = castRay(ro, rd);
+    float t = -1.;//res.x;
+
+    vec3 col = vec3(0);
+    if (0. < t && t < 100.)
+    {
+        const vec3 sun_dir = normalize(vec3(1,2,3));
+        float sha = 1.;
+
+        float sun_dif = saturate(dot(nor, sun_dir))*.9+.1;
+        float sky_dif = saturate(dot(nor, vec3(0,1,0)))*.15;
+        col += vec3(0.9,0.9,0.5)*sun_dif*sha;
+        col += vec3(0.5,0.6,0.9)*sky_dif;
+    }
+    else
+    {
+        // col += vec3(0.5,0.6,0.9)*1.2 - rd.y*.4;
+    }
+
+    col += pow(res.y*.02, 2.)*vec3(0,1,0);
+    col = pow(col, vec3(0.4545));
+    fragColor = vec4(col, 1);
+}
+
 struct Tri
 {
     vec3 vertex0, vertex1, vertex2;
@@ -26,7 +69,7 @@ struct Ray
     float t;
 };
 
-bool IntersectAABB( inout Ray ray, vec3 bmin, vec3 bmax )
+bool IntersectAabb( inout Ray ray, in vec3 bmin, in vec3 bmax )
 {
     float tx1 = (bmin.x - ray.O.x) / ray.D.x, tx2 = (bmax.x - ray.O.x) / ray.D.x;
     float tmin = min( tx1, tx2 ), tmax = max( tx1, tx2 );
@@ -57,103 +100,46 @@ void IntersectTri( inout Ray ray, in Tri tri )
 
 struct Node
 {
-    vec3 aabbMin, aabbMax;
-    int leftNode, firstTriIdx, triCount;
+    vec3 aabbMin;
+    int leftFirst;
+    vec3 aabbMax;
+    int primCount;
 };
 
-const int N = 128;
-layout (std140) uniform INPUT {
-    int nTris;
-    Tri tri[N];
-    int triIdx[N];
-    Node node[N * 2 - 1];
+layout (std430, binding = 0) buffer IN_0 {
+    Tri data[];
 };
 
-int stack[16];
-int ptr = 0;
-void stack_reset() { ptr = 0; }
-bool stack_is_empty() { return ptr != 0; }
-int stack_pop() { return stack[--ptr]; }
-void stack_push( int nodeIdx ) { stack[ptr++] = nodeIdx; }
+layout (std430, binding = 1) buffer IN_1 {
+    Node node[];
+};
 
-void IntersectBVH( inout Ray ray, int nodeIdx )
+vec2 castRay(vec3 ro, vec3 rd)
 {
-#if 1
-    for (int j = 0; j < nTris; j++)
-    {
-        Node n = node[j];
-        for (int i = 0; i < n.triCount; i++ )
-            IntersectTri( ray, tri[triIdx[n.firstTriIdx + i]] );
-    }
-#else
-    stack_reset();
+    float depth = 0.;
+    Ray ray = Ray(ro, rd, 1e30f);
+    int stack[64];
+    int stackPtr = 0;
     int currentNode = 0;
-    for( ;; )
+    for (;;)
     {
-        Node n = node[ currentNode ];
-        // if we hit bounding volume, go down the tree
-        if( IntersectAABB( ray, n.aabbMin, n.aabbMax ) )
+        Node n = node[currentNode];
+        if (IntersectAabb( ray, n.aabbMin, n.aabbMax ))
         {
-            // intersect triangles in this node
-            for (int i = 0; i < n.triCount; i++ )
-                IntersectTri( ray, tri[triIdx[n.firstTriIdx + i]] );
-
+            if (n.primCount > 0)
+            {
+                for (int i=0; i<n.primCount; i++)
+                    IntersectTri(ray, data[n.leftFirst + i]);
+            }
+            else
+            {
+                stack[stackPtr++] = n.leftFirst;
+                stack[stackPtr++] = n.leftFirst + 1;
+            }
+            depth++;
         }
-        else
-        {
-            stack_push( n.leftNode );
-            stack_push( n.leftNode+1 );
-        }
-
-        // get next node, if any
-        if( stack_is_empty() ) break;
-            currentNode = stack_pop();
+        if (stackPtr == 0) break;
+        currentNode = stack[--stackPtr];
     }
-#endif
-}
-
-uniform sampler2D iChannel1, iChannel2;
-uniform vec2 iResolution;
-uniform float iTime;
-out vec4 fragColor;
-void main()
-{
-    vec2 screenUV = gl_FragCoord.xy/iResolution.xy;
-
-    fragColor = texture2D(iChannel2, screenUV);
-    return;
-
-    vec2 uv = (2.0*gl_FragCoord.xy-iResolution.xy) / iResolution.y;
-    vec3 ta = vec3(0,0,0);
-    vec3 ro = ta + vec3(cos(iTime),0.5,sin(iTime)) * 2.5;
-    mat3 ca = setCamera(ro, ta, 0.0);
-    vec3 rd = ca * normalize(vec3(uv, 1.2));
-
-    Tri tri1 = Tri(vec3(0,0,0),vec3(.5,1,0),vec3(-.5,1,0));
-    Tri tri2 = Tri(vec3(1.,-1.,0),vec3(1.5,0,0),vec3(1.,0,0));
-    vec3 nor = normalize(cross(tri1.vertex1-tri1.vertex0,tri1.vertex2-tri1.vertex0));
-    Ray ray = Ray(ro, rd, 1e30);
-    IntersectTri(ray, tri1);
-    IntersectTri(ray, tri2);
-    IntersectAABB(ray, vec3(-.5), vec3(.5));
-    float t = ray.t;
-
-    vec3 col = vec3(0);
-    if (0. < t && t < 100.)
-    {
-        const vec3 sun_dir = normalize(vec3(1,2,3));
-        float sha = 1.;
-
-        float sun_dif = saturate(dot(nor, sun_dir))*.9+.1;
-        float sky_dif = saturate(dot(nor, vec3(0,1,0)))*.15;
-        col += vec3(0.9,0.9,0.5)*sun_dif*sha;
-        col += vec3(0.5,0.6,0.9)*sky_dif;
-    }
-    else
-    {
-        col += vec3(0.5,0.6,0.9)*1.2 - rd.y*.4;
-    }
-
-    col = pow(col, vec3(0.4545));
-    fragColor = vec4(col, 1);
+    return vec2(ray.t, depth);
 }

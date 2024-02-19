@@ -77,10 +77,6 @@ int main()
             static GLuint vbo, frame = 0;
             if (!frame++)
             {
-                GLuint vao;
-                glGenVertexArrays(1, &vao);
-                glBindVertexArray(vao);
-
                 glGenBuffers(1, &vbo);
                 glBindBuffer(GL_ARRAY_BUFFER, vbo);
                 glBufferData(GL_ARRAY_BUFFER, sizeof V[0] * V.size(), V.data(), GL_STATIC_DRAW);
@@ -141,6 +137,8 @@ int main()
 
         glfwSwapBuffers(window1);
         glfwPollEvents();
+
+        // if (!recordVideo(5.39)) break;
     }
 
     int err = glGetError();

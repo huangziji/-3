@@ -67,8 +67,8 @@ static int loadShader1(GLuint prog, const char *filename)
     glGetAttachedShaders(prog, 2, &NbShaders, shaders);
     for (int i=0; i<NbShaders; i++)
     {
-        glDeleteShader(shaders[i]);
         glDetachShader(prog, shaders[i]);
+        glDeleteShader(shaders[i]);
     }
     glAttachShader(prog, fs);
     glAttachShader(prog, vs);
@@ -122,8 +122,8 @@ static int loadShader2(GLuint prog, const char *filename)
     glGetAttachedShaders(prog, 2, &NbShaders, shaders);
     for (int i=0; i<NbShaders; i++)
     {
-        glDeleteShader(shaders[i]);
         glDetachShader(prog, shaders[i]);
+        glDeleteShader(shaders[i]);
     }
     glAttachShader(prog, shd[0]);
     glAttachShader(prog, shd[1]);
@@ -181,6 +181,33 @@ void *loadPlugin(const char * filename, const char *funcname)
             f = dlsym(handle, funcname);
             assert(f);
         }
+        else
+        {
+            f = NULL;
+        }
     }
     return f;
+}
+
+bool recordVideo(float sec)
+{
+    const int resX = 800, resY = 450;
+
+    static const char cmd[] = "$HOME/.spotdl/ffmpeg"
+            " -r 60 -f rawvideo -pix_fmt rgb24 -s 800x450"
+            " -i pipe: -c:v libx264 -c:a aac"
+            " -preset fast -y -pix_fmt yuv420p -crf 21 -vf vflip 1.mp4";
+
+    static FILE *pipe = popen(cmd, "w");
+    static char *buffer = new char[resX*resY*3];
+    static int frame = 0;
+
+    glReadPixels(0,0, resX, resY, GL_RGB, GL_UNSIGNED_BYTE, buffer);
+    fwrite(buffer, resX*resY*3, 1, pipe);
+    if (frame++ > sec*60)
+    {
+        pclose(pipe);
+        return false;
+    }
+    return true;
 }

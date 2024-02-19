@@ -10,5 +10,6 @@ typedef vector<vec3> Soup;
 bool reloadShader1(long *, uint, const char *);
 bool reloadShader2(long *, uint, const char *);
 void *loadPlugin(const char *, const char *);
+bool recordVideo(float sec);
 
 #endif // COMMON_H
