@@ -5,6 +5,7 @@
 #include <boost/container/vector.hpp>
 using namespace glm;
 using boost::container::vector;
+#include "bvh.h"
 
 template <class T> vector<T> &operator<<(vector<T> &a, T const& b)
 {
@@ -12,19 +13,47 @@ template <class T> vector<T> &operator<<(vector<T> &a, T const& b)
     return a;
 }
 
-typedef struct{
-    vec4 par;
-    mat3x4 pose;
-}Instance;
+typedef struct{ vec4 par; mat3x4 pose; }Instance;
 
 extern "C" int mainAnimation(float t)
 {
-    static GLuint ubo1, ssbo1, ssbo2, frame = 0;
+    static GLuint ubo1, ssbo1, frame = 0;
     if (frame++ == 0)
     {
         glGenBuffers(1, &ubo1);
         glGenBuffers(1, &ssbo1);
+
+        vector<vec3> V;
+
+        FILE* file = fopen( "../unity.tri", "r" );
+        if (file)
+        {
+            float a, b, c, d, e, f, g, h, i;
+            for (;;)
+            {
+                int eof = fscanf( file, "%f %f %f %f %f %f %f %f %f\n",
+                    &a, &b, &c, &d, &e, &f, &g, &h, &i );
+                if (eof < 0) break;
+                V << vec3(a, b, c);
+                V << vec3(d, e, f);
+                V << vec3(g, h, i);
+            }
+            fclose( file );
+        }
+
+        Bvh bvh; bvh.Build(V);
+        vector<Tri> const& U = bvh.tri;
+        vector<Node> const& N = bvh.bvhNode;
+
+        GLuint ssbo2, ssbo3;
         glGenBuffers(1, &ssbo2);
+        glGenBuffers(1, &ssbo3);
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo2);
+        glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof U[0] * U.size(), U.data(), GL_STATIC_DRAW);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ssbo2);
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo3);
+        glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof N[0] * N.size(), N.data(), GL_STATIC_DRAW);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, ssbo3);
     }
 
     btTransform xform;
@@ -48,10 +77,6 @@ extern "C" int mainAnimation(float t)
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo1);
     glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof I[0] * I.size(), I.data(), GL_DYNAMIC_DRAW);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssbo1);
-
-    // glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo2);
-    // glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof N[0] * N.size(), N.data(), GL_DYNAMIC_DRAW);
-    // glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ssbo2);
 
     return 0;
 }

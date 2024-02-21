@@ -90,12 +90,14 @@ vec4 boxIntersect( in vec3 ro, in vec3 rd, in vec3 h );
 vec4 sphIntersect( in vec3 ro, in vec3 rd, float ra );
 vec4 capIntersect( in vec3 ro, in vec3 rd, float he, float ra );
 vec4 cylIntersect( in vec3 ro, in vec3 rd, float he, float ra );
+vec4 bvhIntersect(in vec3 ro, in vec3 rd, int nodeIdx);
 
 Hit castRay(in vec3 ro, in vec3 rd)
 {
     float t = 1e30f;
     vec3 nor;
     int id;
+
     for (int i=0; i<instanceCount; i++)
     {
         vec4 h;
@@ -121,6 +123,9 @@ Hit castRay(in vec3 ro, in vec3 rd)
             break;
         case 3:
             h = cylIntersect(O, D, par.x, par.y);
+            break;
+        default:
+            h = bvhIntersect(ro, rd, 0);
             break;
         }
         if (h.x < t)
@@ -228,25 +233,25 @@ vec3 triIntersect( in vec3 ro, in vec3 rd, in vec3 v0, in vec3 v1, in vec3 v2 )
 
 struct Data
 {
-    vec3 ce;
+    vec3 min;
     int id;
-    vec3 h;
+    vec3 max;
     int count;
 };
 
-layout (std430, binding = 1) buffer IN_1 { vec4 aVertex[]; };
+layout (std430, binding = 1) buffer IN_1 { float aVertex[]; };
 layout (std430, binding = 2) buffer IN_2 { Data aNode[]; };
 
-vec3 getVertex(int idx)
+vec3 getVertex3(int idx)
 {
-    return vec3(0);
+    idx *= 3;
+    return vec3(aVertex[idx+0], aVertex[idx+1], aVertex[idx+2]);
 }
 
 vec4 bvhIntersect(in vec3 ro, in vec3 rd, int nodeIdx)
 {
     float t = 1e30f;
     vec3 nor;
-    vec2 uv;
 
     int stack[32];
     int stackPtr = 0; // reset
@@ -258,22 +263,36 @@ vec4 bvhIntersect(in vec3 ro, in vec3 rd, int nodeIdx)
             for (int i=0; i<x.count; i++)
             {
                 int idx = x.id + i;
-                vec3 v0;
-                vec3 v1;
-                vec3 v2;
+                vec3 v0 = getVertex3(idx*3+0);
+                vec3 v1 = getVertex3(idx*3+1);
+                vec3 v2 = getVertex3(idx*3+2);
+                vec3 n1 = normalize(cross(v1-v0,v2-v0));
                 vec3 h = triIntersect(ro, rd, v0, v1, v2);
-                if (h.x < t) t = h.x, uv = h.yz;
+                if (h.x < t) t = h.x, nor = n1;
             }
         }
         else
         {
-            float d1 = boxIntersect(ro-x.ce, rd, x.h).x;
-            float d2 = boxIntersect(ro-x.ce, rd, x.h).x;
-            stack[stackPtr++] = x.id;
-            stack[stackPtr++] = x.id+1; // push
+            vec3 ce = (x.max + x.min) * .5;
+            vec3 he = (x.max - x.min) * .5;
+            float dist1 = boxIntersect(ro-ce, rd, he).x;
+            float dist2 = boxIntersect(ro-ce, rd, he).x;
+            int child1 = x.id;
+            int child2 = x.id+1;
+            if (dist1 > dist2)
+            {
+                float tmp = dist1; dist1 = dist2, dist2 = tmp;
+                int tmp2 = child1; child1 = child2, child2 = tmp2;
+            }
+            if (dist1 < 1e30f)
+            {
+                nodeIdx = child1;
+                if (dist2 < 1e30f) stack[stackPtr++] = child2;
+                continue;
+            }
         }
-        if (stackPtr == 0) break; // empty
-        else nodeIdx = stack[--stackPtr]; // pop
+
+        if (stackPtr == 0) break; else nodeIdx = stack[--stackPtr];
     }
     return vec4(t, nor);
 }

@@ -17,19 +17,13 @@ struct Node
 struct Tri
 {
     vec3 vertex0;
-    int pad1;
     vec3 vertex1;
-    int pad2;
     vec3 vertex2;
-    int pad3;
-    vec3 normal0;
-    int pad4;
 };
 
-typedef struct { vec3 pos, nor; }Vertex;
-typedef vector<Vertex> Soup;
+typedef vector<vec3> Soup;
 
-class AabbTree
+class Bvh
 {
 public:
     vector<Tri> tri;
@@ -44,7 +38,7 @@ private:
     uint nodesUsed = 2;
 };
 
-void AabbTree::Build(Soup const& V)
+void Bvh::Build(Soup const& V)
 {
     tri.resize(V.size()/3);
     triIdx.resize(tri.size());
@@ -53,9 +47,9 @@ void AabbTree::Build(Soup const& V)
 
     for (int i=0; i<tri.size(); i++)
     {
-        tri[i].vertex0 = V[i*3+0].pos;
-        tri[i].vertex1 = V[i*3+1].pos;
-        tri[i].vertex2 = V[i*3+2].pos;
+        tri[i].vertex0 = V[i*3+0];
+        tri[i].vertex1 = V[i*3+1];
+        tri[i].vertex2 = V[i*3+2];
         triIdx[i] = i;
         centroid[i] = (tri[i].vertex0 + tri[i].vertex1 + tri[i].vertex2) * 0.3333f;
     }
@@ -72,12 +66,10 @@ void AabbTree::Build(Soup const& V)
     for (int i=0; i<tmp.size(); i++)
     {
         tri[i] = tmp[triIdx[i]];
-        vec3 nor = cross(tri[i].vertex1-tri[i].vertex0, tri[i].vertex2-tri[i].vertex0);
-        tri[i].normal0 = normalize(nor);
     }
 }
 
-void AabbTree::UpdateNodeBounds(uint nodeIdx)
+void Bvh::UpdateNodeBounds(uint nodeIdx)
 {
     Node& node = bvhNode[nodeIdx];
     node.aabbMin = vec3( 1e30f );
@@ -107,7 +99,7 @@ struct Aabb
     }
 };
 
-float AabbTree::FindBestSplitPlane( Node& node, int& axis, float& splitPos )
+float Bvh::FindBestSplitPlane( Node& node, int& axis, float& splitPos )
 {
     const int BINS = 8;
     typedef struct { Aabb bounds; int triCount = 0; }Bin;
@@ -170,7 +162,7 @@ float CalculateNodeCost( Node& node )
     return node.primCount * surfaceArea;
 }
 
-void AabbTree::Subdivide( uint nodeIdx )
+void Bvh::Subdivide( uint nodeIdx )
 {
     // terminate recursion
     Node& node = bvhNode[nodeIdx];
