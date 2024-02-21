@@ -33,7 +33,7 @@ uniform vec2 iResolution;
 uniform float iTime;
 void main()
 {
-    vec3 ta = vec3(-1,0,0);
+    vec3 ta = vec3(0,0,0);
     vec3 ro = ta + vec3(cos(iTime),0.5,sin(iTime)) * 2.5;
     mat3 ca = setCamera(ro, ta, 0.0);
     Pos = aVertex.xyz;

@@ -16,25 +16,35 @@ struct Node
 
 struct Tri
 {
-    vec3 vertex0, vertex1, vertex2;
+    vec3 vertex0;
+    int pad1;
+    vec3 vertex1;
+    int pad2;
+    vec3 vertex2;
+    int pad3;
+    vec3 normal0;
+    int pad4;
 };
+
+typedef struct { vec3 pos, nor; }Vertex;
+typedef vector<Vertex> Soup;
 
 class AabbTree
 {
-    float FindBestSplitPlane( Node& node, int& axis, float& splitPos );
-    void UpdateNodeBounds( uint );
-    void Subdivide( uint );
-
-    vector<uint> triIdx;
-    vector<vec3> centroid;
-    uint rootNodeIdx = 0, nodesUsed = 2;
 public:
     vector<Tri> tri;
     vector<Node> bvhNode;
-    void BuildBvh( vector<vec3> const& );
+    void Build(Soup const& V);
+private:
+    float FindBestSplitPlane( Node& node, int& axis, float& splitPos );
+    void UpdateNodeBounds( uint );
+    void Subdivide( uint );
+    vector<uint> triIdx;
+    vector<vec3> centroid;
+    uint nodesUsed = 2;
 };
 
-void AabbTree::BuildBvh(vector<vec3> const& V)
+void AabbTree::Build(Soup const& V)
 {
     tri.resize(V.size()/3);
     triIdx.resize(tri.size());
@@ -43,9 +53,9 @@ void AabbTree::BuildBvh(vector<vec3> const& V)
 
     for (int i=0; i<tri.size(); i++)
     {
-        tri[i].vertex0 = V[i*3+0];
-        tri[i].vertex1 = V[i*3+1];
-        tri[i].vertex2 = V[i*3+2];
+        tri[i].vertex0 = V[i*3+0].pos;
+        tri[i].vertex1 = V[i*3+1].pos;
+        tri[i].vertex2 = V[i*3+2].pos;
         triIdx[i] = i;
         centroid[i] = (tri[i].vertex0 + tri[i].vertex1 + tri[i].vertex2) * 0.3333f;
     }
@@ -62,6 +72,8 @@ void AabbTree::BuildBvh(vector<vec3> const& V)
     for (int i=0; i<tmp.size(); i++)
     {
         tri[i] = tmp[triIdx[i]];
+        vec3 nor = cross(tri[i].vertex1-tri[i].vertex0, tri[i].vertex2-tri[i].vertex0);
+        tri[i].normal0 = normalize(nor);
     }
 }
 

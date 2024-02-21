@@ -69,36 +69,24 @@ int main()
 
         int triCount = 0;
         {
-            static Soup V;
             void *f = loadPlugin("libBvhPlugin.so", "mainAnimation");
-            typedef void (plugin)(Soup&);
-            if (f) ((plugin*)f)(V);
-
-            static GLuint vbo, frame = 0;
-            if (!frame++)
-            {
-                glGenBuffers(1, &vbo);
-                glBindBuffer(GL_ARRAY_BUFFER, vbo);
-                glBufferData(GL_ARRAY_BUFFER, sizeof V[0] * V.size(), V.data(), GL_STATIC_DRAW);
-                glEnableVertexAttribArray(0);
-                glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof V[0], 0);
-            }
-            glBindBuffer(GL_ARRAY_BUFFER, vbo);
-            triCount = V.size();
+            typedef int (plugin)(float);
+            if (f) triCount = ((plugin*)f)(time);
         }
 
         static GLuint prog1 = glCreateProgram();
         static GLuint prog2 = glCreateProgram();
         {
-            static int iTime1, iTime2;
-            static long lastModTime1, lastModTime2;
-            bool dirty2 = reloadShader2(&lastModTime2, prog2, "../Code/base.glsl");
-            if (dirty2)
-            {
-                iTime2 = glGetUniformLocation(prog2, "iTime");
-                int iResolution = glGetUniformLocation(prog2, "iResolution");
-                glProgramUniform2f(prog2, iResolution, RES_X, RES_Y);
-            }
+            static int iTime1;// iTime2;
+            static long lastModTime1;// lastModTime2;
+            // bool dirty2 = reloadShader2(&lastModTime2, prog2, "../Code/base.glsl");
+            // if (dirty2)
+            // {
+            //     iTime2 = glGetUniformLocation(prog2, "iTime");
+            //     int iResolution = glGetUniformLocation(prog2, "iResolution");
+            //     glProgramUniform2f(prog2, iResolution, RES_X, RES_Y);
+            // }
+            // glProgramUniform1f(prog2, iTime2, time);
             bool dirty1 = reloadShader1(&lastModTime1, prog1, "../Code/base.frag");
             if (dirty1)
             {
@@ -111,19 +99,7 @@ int main()
                 glProgramUniform1i(prog1, iChannel2, 2);
             }
             glProgramUniform1f(prog1, iTime1, time);
-            glProgramUniform1f(prog2, iTime2, time);
         }
-
-        glDepthMask(1);
-        glFrontFace(GL_CCW);
-        glDepthFunc(GL_LESS);
-        glEnable(GL_DEPTH_TEST);
-        glEnable(GL_CULL_FACE);
-        glBindFramebuffer(GL_FRAMEBUFFER, bufferA);
-        glViewport(0, 0, RES_X, RES_Y);
-        glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
-        glUseProgram(prog2);
-        glDrawArrays(GL_TRIANGLES, 0, triCount);
 
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, tex1);
