@@ -1,5 +1,6 @@
 [requires]
 bullet3/3.25
+recastnavigation/cci.20200511
 
 [generators]
 CMakeDeps

@@ -3,6 +3,7 @@ project(Bvh)
 
 include(../build/conan_toolchain.cmake)
 find_package(Bullet REQUIRED)
+find_package(recastnavigation REQUIRED)
 
 set(CMAKE_PREFIX_PATH /home/edwde/.local/micromamba/envs/Bvh/)
 add_definitions(-DGLFW_INCLUDE_NONE)

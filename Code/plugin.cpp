@@ -33,19 +33,40 @@ extern "C" void mainAnimation(float t, btDynamicsWorld *dynamicWorld)
         ground->setRestitution(.5);
         dynamicWorld->addRigidBody(ground);
 
-        world.setRotation(btQuaternion(btVector3(0,1,0), t));
-        btCollisionShape *shape = new btBoxShape(btVector3(.3,.3,.3));
+        world.setOrigin(btVector3(0,2,0));
+        btCollisionShape *shape = new btCapsuleShape(.2,.5);
         float mass = 1.;
         btVector3 inertia = btVector3(0,0,0);
         shape->calculateLocalInertia(mass, inertia);
-        world.setOrigin(btVector3(1,5,0));
         btRigidBody *rb1 = new btRigidBody(
             btRigidBody::btRigidBodyConstructionInfo(
             mass, new btDefaultMotionState( world, local ), shape, inertia) );
         rb1->setDamping(.2, .2);
         rb1->setFriction(.5);
         rb1->setRestitution(.5);
+        rb1->setCollisionFlags(btCollisionObject::CF_KINEMATIC_OBJECT);
         dynamicWorld->addRigidBody(rb1);
+
+        world.setOrigin(btVector3(0,1,0));
+        btRigidBody *rb2 = new btRigidBody(
+            btRigidBody::btRigidBodyConstructionInfo(
+            mass, new btDefaultMotionState( world, local ), shape, inertia) );
+        rb2->setDamping(.2, .2);
+        rb2->setFriction(.5);
+        rb2->setRestitution(.5);
+        rb2->setLinearVelocity(btVector3(1,0,0));
+        rb2->setAngularVelocity(btVector3(1,0,1));
+        dynamicWorld->addRigidBody(rb2);
+
+        btTransform frameA, frameB;
+        frameA.setIdentity();
+        frameB.setIdentity();
+        frameA.setOrigin(btVector3(0,1,0));
+        frameB.setOrigin(btVector3(0,2,0));
+        btTypedConstraint *joint1 = new btFixedConstraint(*rb1, *rb2, frameA, frameB);
+        joint1->setDbgDrawSize(2.0);
+        joint1->setEnabled(true);
+        dynamicWorld->addConstraint(joint1, true);
 
         vector<vec3> V;
         FILE* file = fopen( "../unity.tri", "r" );
@@ -104,6 +125,12 @@ extern "C" void mainAnimation(float t, btDynamicsWorld *dynamicWorld)
         pose.getOpenGLMatrix(&mat[0][0]);
         insta.pose = mat3x4(transpose(mat));
 
+        if (i == arr.size()-2)
+        {
+            pose.setOrigin(pose.getOrigin() + btVector3(0.5,0,0.5)*dt);
+            body->setWorldTransform(pose);
+        }
+
         switch (shape->getShapeType())
         {
         case STATIC_PLANE_PROXYTYPE:
@@ -122,9 +149,16 @@ extern "C" void mainAnimation(float t, btDynamicsWorld *dynamicWorld)
             break;
         }
         case CYLINDER_SHAPE_PROXYTYPE:
+        {
             float h3 = ((btCylinderShape*)shape)->getHalfExtentsWithMargin().y();
             float r3 = ((btCylinderShape*)shape)->getRadius();
             insta.par = vec4(h3,r3,0,intBitsToFloat(3));
+            break;
+        }
+        case CONE_SHAPE_PROXYTYPE:
+            float h4 = ((btConeShape*)shape)->getHeight();
+            float r4 = ((btConeShape*)shape)->getRadius();
+            insta.par = vec4(h4,r4,0,intBitsToFloat(4));
             break;
         }
 

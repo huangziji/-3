@@ -23,7 +23,8 @@ public:
 
     virtual int getDebugMode() const override final
     {
-        return DBG_DrawAabb|DBG_MAX_DEBUG_DRAW_MODE;
+        return DBG_DrawAabb|DBG_DrawWireframe|
+                DBG_DrawConstraints|DBG_DrawConstraintLimits;
     }
 };
 

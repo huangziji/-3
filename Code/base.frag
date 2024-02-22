@@ -69,10 +69,9 @@ void main()
     col = pow(col, vec3(0.4545));
     fragColor = vec4(col, 1);
 
-    t = min(t, 1000.);
     const float n = 0.1, f = 1000.0;
     const float p10 = (f+n)/(f-n), p11 = -2.0*f*n/(f-n); // from perspective matrix
-    float ssd = t * dot(rd, normalize(ta-ro)); // convert camera dist to screen space dist
+    float ssd = min(t, f) * dot(rd, normalize(ta-ro)); // convert camera dist to screen space dist
     float ndc = p10 + p11/ssd; // inverse of linear depth
     gl_FragDepth = (ndc*gl_DepthRange.diff + gl_DepthRange.near + gl_DepthRange.far) / 2.0;
 }
@@ -93,6 +92,7 @@ vec4 boxIntersect( in vec3 ro, in vec3 rd, in vec3 h );
 vec4 sphIntersect( in vec3 ro, in vec3 rd, float ra );
 vec4 capIntersect( in vec3 ro, in vec3 rd, float he, float ra );
 vec4 cylIntersect( in vec3 ro, in vec3 rd, float he, float ra );
+vec4 conIntersect( in vec3 ro, in vec3 rd, float he, float ra, float rb );
 vec4 bvhIntersect(in vec3 ro, in vec3 rd, int nodeIdx);
 
 Hit castRay(in vec3 ro, in vec3 rd)
@@ -127,11 +127,14 @@ Hit castRay(in vec3 ro, in vec3 rd)
         case 3:
             h = cylIntersect(O, D, par.x, par.y);
             break;
+        case 4:
+            h = conIntersect(O, D, par.x, par.y, 0.);
+            break;
         default:
             h = bvhIntersect(ro, rd, 0);
             break;
         }
-        if (h.x < t)
+        if (0. < h.x && h.x < t)
         {
             t = h.x;
             nor = rot * h.yzw;
@@ -144,7 +147,6 @@ Hit castRay(in vec3 ro, in vec3 rd)
 vec4 plaIntersect( in vec3 ro, in vec3 rd, in vec4 p )
 {
     float t = -(dot(ro,p.xyz)+p.w)/dot(rd,p.xyz);
-    t = t > 0.0 ? t : 1e30f;
     return vec4(t, p.xyz);
 }
 vec4 boxIntersect( in vec3 ro, in vec3 rd, vec3 h )
@@ -156,7 +158,7 @@ vec4 boxIntersect( in vec3 ro, in vec3 rd, vec3 h )
     vec3 t2 = -n + k;
     float tN = max( max( t1.x, t1.y ), t1.z );
     float tF = min( min( t2.x, t2.y ), t2.z );
-    if( tN>tF || tF<0.0) return vec4(1e30f);
+    if( tN>tF || tF<0.0) return vec4(-1.0);
     vec3 nor = (tN>0.0) ? step(vec3(tN),t1) : step(t2,vec3(tF));
         nor *= -sign(rd);
     return vec4( tN, nor );
@@ -166,7 +168,7 @@ vec4 sphIntersect( in vec3 ro, in vec3 rd, float ra )
     float b = dot( ro, rd );
     vec3 qc = ro - b*rd;
     float h = ra*ra - dot( qc, qc );
-    if( h<0.0 ) return vec4(1e30f);
+    if( h<0.0 ) return vec4(-1.0);
     h = sqrt( h );
     float t = -b-h;
     return vec4(t, (ro + t*rd)/ra);
@@ -178,7 +180,7 @@ vec4 cylIntersect( in vec3 ro, in vec3 rd, float he, float ra )
     float k0 = dot(ro,ro) - ro.y*ro.y - ra*ra;
 
     float h = k1*k1 - k2*k0;
-    if( h<0.0 ) return vec4(1e30f);
+    if( h<0.0 ) return vec4(-1.0);
     h = sqrt(h);
     float t = (-k1-h)/k2;
 
@@ -190,7 +192,7 @@ vec4 cylIntersect( in vec3 ro, in vec3 rd, float he, float ra )
     t = ( ((y<0.0)?-he:he) - ro.y)/rd.y;
     if( abs(k1+k2*t)<h ) return vec4( t, vec3(0.0,sign(y),0.0) );
 
-    return vec4(1e30f);
+    return vec4(-1.0);
 }
 vec4 capIntersect( in vec3 ro, in vec3 rd, float he, float ra )
 {
@@ -199,7 +201,7 @@ vec4 capIntersect( in vec3 ro, in vec3 rd, float he, float ra )
     float k0 = dot(ro,ro) - ro.y*ro.y - ra*ra;
 
     float h = k1*k1 - k2*k0;
-    if( h<0.0 ) return vec4(1e30f);
+    if( h<0.0 ) return vec4(-1.0);
     h = sqrt(h);
     float t = (-k1-h)/k2;
 
@@ -215,7 +217,42 @@ vec4 capIntersect( in vec3 ro, in vec3 rd, float he, float ra )
     t = -b - sqrt(h);
     if( h>0.0 ) return vec4( t, (oc + t*rd)/ra );
 
-    return vec4(1e30f);
+    return vec4(-1.0);
+}
+float dot2(vec3 a) { return dot(a, a); }
+vec4 conIntersect( in vec3 ro, in vec3 rd, float he, float ra, float rb )
+{
+    ro += vec3(0.0,he,0.0)*0.5;
+    vec3  ob = ro - vec3( 0.0,he,0.0);
+
+    //caps
+         if( ro.y<0.0 ) { if( dot2(ro*rd.y-rd*ro.y)<(ra*ra*rd.y*rd.y) ) return vec4(-ro.y/rd.y,-vec3(0.0,1.0,0.0)); }
+    else if( ro.y>he  ) { if( dot2(ob*rd.y-rd*ob.y)<(rb*rb*rd.y*rd.y) ) return vec4(-ob.y/rd.y, vec3(0.0,1.0,0.0)); }
+
+    // body
+    float m4 = dot(rd,ro);
+    float m5 = dot(ro,ro);
+    float rr = ra - rb;
+    float hy = he*he + rr*rr;
+
+    float k2 = he*he    - rd.y*rd.y*hy;
+    float k1 = he*he*m4 - ro.y*rd.y*hy + ra*(rr*he*rd.y*1.0 );
+    float k0 = he*he*m5 - ro.y*ro.y*hy + ra*(rr*he*ro.y*2.0 - he*he*ra);
+
+    float h = k1*k1 - k2*k0;
+    if( h<0.0 ) return vec4(-1.0);
+
+    float t = (-k1-sqrt(h))/k2;
+
+    float y = ro.y + t*rd.y;
+    if( y>0.0 && y<he )
+    {
+        return vec4(t, normalize(
+        he*he*(ro+t*rd) + vec3(0.0,rr*he*ra - hy*y,0.0)
+        ));
+    }
+
+    return vec4(-1.0);
 }
 vec3 triIntersect( in vec3 ro, in vec3 rd, in vec3 v0, in vec3 v1, in vec3 v2 )
 {
