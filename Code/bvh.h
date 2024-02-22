@@ -21,14 +21,12 @@ struct Tri
     vec3 vertex2;
 };
 
-typedef vector<vec3> Soup;
-
 class Bvh
 {
 public:
     vector<Tri> tri;
     vector<Node> bvhNode;
-    void Build(Soup const& V);
+    void Build(vector<vec3> const& V);
 private:
     float FindBestSplitPlane( Node& node, int& axis, float& splitPos );
     void UpdateNodeBounds( uint );
@@ -38,7 +36,7 @@ private:
     uint nodesUsed = 2;
 };
 
-void Bvh::Build(Soup const& V)
+void Bvh::Build(vector<vec3> const& V)
 {
     tri.resize(V.size()/3);
     triIdx.resize(tri.size());

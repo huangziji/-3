@@ -10,24 +10,34 @@ find_package(glfw3 REQUIRED)
 find_package(glad  REQUIRED)
 find_package(glm   REQUIRED)
 
-
-add_executable(Bvh main.cpp base.frag
-    base.glsl)
-target_link_libraries(Bvh glfw glad dl BvhCommon)
+add_executable(Bvh main.cpp base.frag base.glsl)
+target_link_libraries(Bvh glfw glad dl BvhCommon
+    BulletSoftBody
+    Bullet3Common
+    BulletDynamics
+    BulletCollision
+    LinearMath
+)
 target_link_directories(Bvh PRIVATE
     ${CMAKE_PREFIX_PATH}/lib
     ${CMAKE_BINARY_DIR}
-)
-target_include_directories(Bvh PRIVATE
-    ${CMAKE_PREFIX_PATH}/include
-)
-add_library(BvhPlugin SHARED plugin.cpp bvh.h)
-target_link_directories(BvhPlugin PRIVATE
     ${CMAKE_LIBRARY_PATH}
 )
+target_include_directories(Bvh PRIVATE
+    ${CMAKE_INCLUDE_PATH}
+)
+add_library(BvhCommon common.cpp common.h)
+target_include_directories(BvhCommon PRIVATE
+    ${CMAKE_PREFIX_PATH}/include
+)
+
+add_library(BvhPlugin SHARED plugin.cpp bvh.h)
 target_include_directories(BvhPlugin PRIVATE
     ${CMAKE_PREFIX_PATH}/include
     ${CMAKE_INCLUDE_PATH}
+)
+target_link_directories(BvhPlugin PRIVATE
+    ${CMAKE_LIBRARY_PATH}
 )
 target_link_libraries(BvhPlugin PRIVATE
     BulletSoftBody
@@ -35,8 +45,4 @@ target_link_libraries(BvhPlugin PRIVATE
     BulletDynamics
     BulletCollision
     LinearMath
-)
-add_library(BvhCommon common.cpp common.h)
-target_include_directories(BvhCommon PRIVATE
-    ${CMAKE_PREFIX_PATH}/include
 )

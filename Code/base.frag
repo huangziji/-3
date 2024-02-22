@@ -31,15 +31,11 @@ struct Hit
 
 Hit castRay(in vec3 ro, in vec3 rd);
 
-uniform sampler2D iChannel1, iChannel2;
 uniform vec2 iResolution;
 uniform float iTime;
 out vec4 fragColor;
 void main()
 {
-    // vec2 screenUV = gl_FragCoord.xy/iResolution.xy;
-    // vec4 gb = texture2D(iChannel2, screenUV);
-
     float ti = iTime;
     vec2 uv = (2.0*gl_FragCoord.xy-iResolution.xy) / iResolution.y;
     vec3 ta = vec3(0,0,0);
@@ -57,7 +53,7 @@ void main()
         vec3 mate = palette(float(h.id) + 24111.23);
 
         const vec3 sun_dir = normalize(vec3(1,2,3));
-        float t2 = castRay(ro + rd*t + nor*0.003, sun_dir).t;
+        float t2 = castRay(ro + rd*t + nor*0.0003, sun_dir).t;
         float sha = float(0. > t2 || t2 > 100.) * .8 + .2;
 
         float sun_dif = saturate(dot(nor, sun_dir))*.8+.2;
@@ -72,6 +68,13 @@ void main()
 
     col = pow(col, vec3(0.4545));
     fragColor = vec4(col, 1);
+
+    t = min(t, 1000.);
+    const float n = 0.1, f = 1000.0;
+    const float p10 = (f+n)/(f-n), p11 = -2.0*f*n/(f-n); // from perspective matrix
+    float ssd = t * dot(rd, normalize(ta-ro)); // convert camera dist to screen space dist
+    float ndc = p10 + p11/ssd; // inverse of linear depth
+    gl_FragDepth = (ndc*gl_DepthRange.diff + gl_DepthRange.near + gl_DepthRange.far) / 2.0;
 }
 
 struct Instance{

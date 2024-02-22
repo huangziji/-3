@@ -1,8 +1,31 @@
+#include "common.h"
 #include <GLFW/glfw3.h>
 #include <glad/glad.h>
 #include <stdio.h>
 #include <assert.h>
-#include "common.h"
+#include <btBulletDynamicsCommon.h>
+
+class MyDebugDraw : public btIDebugDraw
+{
+public:
+    vector<btVector3> data;
+    void clearLines() override final { data.clear(); }
+    void drawLine(const btVector3& from, const btVector3& to, const btVector3& color) override final
+    {
+        data.push_back(to);
+        data.push_back(from);
+    }
+
+    void drawContactPoint(const btVector3& PointOnB, const btVector3& normalOnB, btScalar distance, int lifeTime, const btVector3& color) override final {}
+    void reportErrorWarning(const char* warningString) override final {}
+    void draw3dText(const btVector3& location, const char* textString)  override final {}
+    void setDebugMode(int debugMode)  override final {}
+
+    virtual int getDebugMode() const override final
+    {
+        return DBG_DrawAabb|DBG_MAX_DEBUG_DRAW_MODE;
+    }
+};
 
 static void error_callback(int _, const char* desc)
 {
@@ -11,6 +34,12 @@ static void error_callback(int _, const char* desc)
 
 int main()
 {
+    MyDebugDraw *dd = new MyDebugDraw;
+    btCollisionConfiguration *conf = new btDefaultCollisionConfiguration;
+    btDynamicsWorld *dynamicWorld = new btDiscreteDynamicsWorld(
+                new btCollisionDispatcher(conf), new btDbvtBroadphase,
+                new btSequentialImpulseConstraintSolver, conf);
+
     glfwInit();
     glfwSetErrorCallback(error_callback);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
@@ -67,49 +96,62 @@ int main()
             glfwGetCursorPos(window1, &xpos, &ypos);
         }
 
-        int triCount = 0;
+        vector<btVector3> const& V = dd->data;
         {
+            dd->clearLines();
+            dynamicWorld->setDebugDrawer(dd);
             void *f = loadPlugin("libBvhPlugin.so", "mainAnimation");
-            typedef int (plugin)(float);
-            if (f) triCount = ((plugin*)f)(time);
+            typedef void (plugin)(float, btDynamicsWorld*);
+            if (f) ((plugin*)f)(time, dynamicWorld);
+
+            static GLuint vbo, frame = 0;
+            if (frame++ == 0)
+            {
+                glGenBuffers(1, &vbo);
+            }
+
+            glBindBuffer(GL_ARRAY_BUFFER, vbo);
+            glBufferData(GL_ARRAY_BUFFER, sizeof V[0] * V.size(), V.data(), GL_DYNAMIC_DRAW);
+            glEnableVertexAttribArray(0);
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(btVector3), 0);
         }
 
         static GLuint prog1 = glCreateProgram();
         static GLuint prog2 = glCreateProgram();
         {
-            static int iTime1;// iTime2;
-            static long lastModTime1;// lastModTime2;
-            // bool dirty2 = reloadShader2(&lastModTime2, prog2, "../Code/base.glsl");
-            // if (dirty2)
-            // {
-            //     iTime2 = glGetUniformLocation(prog2, "iTime");
-            //     int iResolution = glGetUniformLocation(prog2, "iResolution");
-            //     glProgramUniform2f(prog2, iResolution, RES_X, RES_Y);
-            // }
-            // glProgramUniform1f(prog2, iTime2, time);
+            static int iTime1, iTime2;
+            static long lastModTime1, lastModTime2;
             bool dirty1 = reloadShader1(&lastModTime1, prog1, "../Code/base.frag");
             if (dirty1)
             {
                 iTime1 = glGetUniformLocation(prog1, "iTime");
                 int iResolution = glGetUniformLocation(prog1, "iResolution");
                 glProgramUniform2f(prog1, iResolution, RES_X, RES_Y);
-                int iChannel1 = glGetUniformLocation(prog1, "iChannel1");
-                int iChannel2 = glGetUniformLocation(prog1, "iChannel2");
-                glProgramUniform1i(prog1, iChannel1, 1);
-                glProgramUniform1i(prog1, iChannel2, 2);
+            }
+            bool dirty2 = reloadShader2(&lastModTime2, prog2, "../Code/base.glsl");
+            if (dirty2)
+            {
+                iTime2 = glGetUniformLocation(prog2, "iTime");
+                int iResolution = glGetUniformLocation(prog2, "iResolution");
+                glProgramUniform2f(prog2, iResolution, RES_X, RES_Y);
             }
             glProgramUniform1f(prog1, iTime1, time);
+            glProgramUniform1f(prog2, iTime2, time);
         }
 
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, tex1);
-        glActiveTexture(GL_TEXTURE2);
-        glBindTexture(GL_TEXTURE_2D, tex2);
-        glDisable(GL_DEPTH_TEST);
+        glDepthMask(1);
+        glFrontFace(GL_CCW);
+        glDepthFunc(GL_LESS);
+        glEnable(GL_CULL_FACE);
+        glEnable(GL_DEPTH_TEST);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        glClear(GL_COLOR_BUFFER_BIT);
+        glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
         glUseProgram(prog1);
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+        glDepthMask(0);
+        glUseProgram(prog2);
+        glDrawArrays(GL_LINES, 0, V.size());
 
         glfwSwapBuffers(window1);
         glfwPollEvents();
