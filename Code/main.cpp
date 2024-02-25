@@ -7,24 +7,29 @@
 
 class MyDebugDraw : public btIDebugDraw
 {
+    int _debugMode;
 public:
-    vector<btVector3> data;
-    void clearLines() override final { data.clear(); }
+    btAlignedObjectArray<btVector3> _data;
+    void clearLines() override final { _data.clear(); }
     void drawLine(const btVector3& from, const btVector3& to, const btVector3& color) override final
     {
-        data.push_back(to);
-        data.push_back(from);
+        _data.push_back(to);
+        _data.push_back(from);
     }
 
     void drawContactPoint(const btVector3& PointOnB, const btVector3& normalOnB, btScalar distance, int lifeTime, const btVector3& color) override final {}
-    void reportErrorWarning(const char* warningString) override final {}
+    void reportErrorWarning(const char* warningString) override final
+    {
+        fprintf(stderr, "ERROR: %s\n", warningString);
+    }
     void draw3dText(const btVector3& location, const char* textString)  override final {}
-    void setDebugMode(int debugMode)  override final {}
+    void setDebugMode(int debugMode)  override final { _debugMode = debugMode; }
 
     virtual int getDebugMode() const override final
     {
-        return DBG_DrawAabb|DBG_DrawWireframe|
-                DBG_DrawConstraints|DBG_DrawConstraintLimits;
+        // return _debugMode;
+        return DBG_DrawAabb;//|DBG_DrawWireframe|
+                    //DBG_DrawConstraints|DBG_DrawConstraintLimits;
     }
 };
 
@@ -40,6 +45,7 @@ int main()
     btDynamicsWorld *dynamicWorld = new btDiscreteDynamicsWorld(
                 new btCollisionDispatcher(conf), new btDbvtBroadphase,
                 new btSequentialImpulseConstraintSolver, conf);
+    dynamicWorld->setDebugDrawer(dd);
 
     glfwInit();
     glfwSetErrorCallback(error_callback);
@@ -97,47 +103,59 @@ int main()
             glfwGetCursorPos(window1, &xpos, &ypos);
         }
 
-        vector<btVector3> const& V = dd->data;
+        btAlignedObjectArray<btVector3> const& V = dd->_data;
         {
-            dd->clearLines();
-            dynamicWorld->setDebugDrawer(dd);
+            btAlignedObjectArray<btTransform> I;
             void *f = loadPlugin("libBvhPlugin.so", "mainAnimation");
-            typedef void (plugin)(float, btDynamicsWorld*);
-            if (f) ((plugin*)f)(time, dynamicWorld);
+            typedef void (plugin)(btAlignedObjectArray<btTransform> &, btDynamicsWorld*, float);
+            if (f) ((plugin*)f)(I, dynamicWorld, time);
 
-            static GLuint vbo, frame = 0;
+            static GLuint vbo, ubo1, ssbo1, frame = 0;
             if (frame++ == 0)
             {
                 glGenBuffers(1, &vbo);
+                glGenBuffers(1, &ubo1);
+                glGenBuffers(1, &ssbo1);
             }
 
             glBindBuffer(GL_ARRAY_BUFFER, vbo);
-            glBufferData(GL_ARRAY_BUFFER, sizeof V[0] * V.size(), V.data(), GL_DYNAMIC_DRAW);
+            glBufferData(GL_ARRAY_BUFFER, sizeof V[0] * V.size(), &V[0], GL_DYNAMIC_DRAW);
             glEnableVertexAttribArray(0);
             glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(btVector3), 0);
+
+            uint data[] = { (uint)I.size() };
+            glBindBuffer(GL_UNIFORM_BUFFER, ubo1);
+            glBufferData(GL_UNIFORM_BUFFER, sizeof data, data, GL_DYNAMIC_DRAW);
+            glBindBufferBase(GL_UNIFORM_BUFFER, 0, ubo1);
+            glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo1);
+            glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof I[0] * I.size(), &I[0], GL_DYNAMIC_DRAW);
+            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssbo1);
         }
 
         static GLuint prog1 = glCreateProgram();
         static GLuint prog2 = glCreateProgram();
         {
-            static int iTime1, iTime2;
+            vec3 ta = vec3(0,1,0);
+            vec3 ro = ta + vec3(sin(time),0.5,cos(time)) * 2.f;
+            static int iCamera1, iCamera2;
             static long lastModTime1, lastModTime2;
             bool dirty1 = reloadShader1(&lastModTime1, prog1, "../Code/base.frag");
             if (dirty1)
             {
-                iTime1 = glGetUniformLocation(prog1, "iTime");
+                iCamera1 = glGetUniformLocation(prog1, "iCamera");
                 int iResolution = glGetUniformLocation(prog1, "iResolution");
                 glProgramUniform2f(prog1, iResolution, RES_X, RES_Y);
             }
             bool dirty2 = reloadShader2(&lastModTime2, prog2, "../Code/base.glsl");
             if (dirty2)
             {
-                iTime2 = glGetUniformLocation(prog2, "iTime");
+                iCamera2 = glGetUniformLocation(prog2, "iCamera");
                 int iResolution = glGetUniformLocation(prog2, "iResolution");
                 glProgramUniform2f(prog2, iResolution, RES_X, RES_Y);
             }
-            glProgramUniform1f(prog1, iTime1, time);
-            glProgramUniform1f(prog2, iTime2, time);
+            float data[] = { ta.x, ta.y, ta.z, ro.x, ro.y, ro.z };
+            glProgramUniformMatrix2x3fv(prog1, iCamera1, 1, GL_FALSE, data);
+            glProgramUniformMatrix2x3fv(prog2, iCamera2, 1, GL_FALSE, data);
         }
 
         glDepthMask(1);

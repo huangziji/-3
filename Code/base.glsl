@@ -21,13 +21,12 @@ mat4 projectionMatrix(float ar)
 
 #ifdef _VS
 layout (location = 0) in vec4 aVertex;
+uniform mat2x3 iCamera;
 uniform vec2 iResolution;
-uniform float iTime;
 void main()
 {
-    float ti = iTime;
-    vec3 ta = vec3(0,0,0);
-    vec3 ro = ta + vec3(sin(ti),0.5,cos(ti)) * 2.5;
+    vec3 ta = iCamera[0];
+    vec3 ro = iCamera[1];
     mat3 ca = setCamera(ro, ta, 0.0);
 
     float ar = iResolution.x/iResolution.y;

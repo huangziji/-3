@@ -1,12 +1,11 @@
+#include "common.h"
 #include <glad/glad.h>
 #include <stdio.h>
-#include <glm/glm.hpp>
 #include <boost/container/vector.hpp>
-using namespace glm;
 using boost::container::vector;
-#include "bvh.h"
 #include <btBulletDynamicsCommon.h>
 
+template <class T> vector<T> &operator,(vector<T> &a, T const& b) { return a << b; }
 template <class T> vector<T> &operator<<(vector<T> &a, T const& b)
 {
     a.push_back(b);
@@ -14,101 +13,136 @@ template <class T> vector<T> &operator<<(vector<T> &a, T const& b)
 }
 
 typedef struct{ vec4 par; mat3x4 pose; }Instance;
+#include <sys/stat.h>
 
-extern "C" void mainAnimation(float t, btDynamicsWorld *dynamicWorld)
+extern "C" void mainAnimation(btAlignedObjectArray<Instance> & I, btDynamicsWorld *dynamicWorld, float t)
 {
-    static GLuint ubo1, ssbo1, frame = 0;
-    if (frame++ == 0)
+    static vector<int> parents;
+    static vector<btVector3> bindPos;
+    static vector<int> shapeType;
+    static vector<btVector3> shapeDesc;
+    bool dirty = false;
+
     {
+        static long lastModTime;
+        const char *filename = "../Code/rig.csv";
+
+        struct stat libStat;
+        int err = stat(filename, &libStat);
+        if (err == 0 && lastModTime != libStat.st_mtime)
+        {
+            parents.clear();
+            bindPos.clear();
+            shapeDesc.clear();
+            shapeType.clear();
+            parents << -1;
+            bindPos << btVector3();
+            shapeType << -1;
+            shapeDesc << btVector3();
+            dirty = true;
+
+            lastModTime = libStat.st_mtime;
+            printf("INFO: reloading file %s\n", filename);
+            FILE *file = fopen(filename, "r");
+            if (file)
+            {
+                char buffer[256];
+                for (;;)
+                {
+                    long cur = ftell(file);
+                    int b,c;
+                    float d,e,f,g,h,i;
+                    int eof = fscanf( file, "%[^,],%d,%d,%f,%f,%f,%f,%f,%f",
+                        buffer, &b, &c, &d, &e, &f, &g, &h, &i );
+                    if (eof < 0) break;
+                    fseek(file, cur, SEEK_SET);
+                    fgets(buffer, sizeof buffer, file);
+                    // printf("%d %f %f %f %f %f %f\n",
+                           // p, a, b, c, d, e, f);
+
+                    parents << b;
+                    shapeType << c;
+                    bindPos << btVector3(d,e,f);
+                    shapeDesc << btVector3(g,h,i);
+                }
+                fclose( file );
+            }
+        }
+    }
+
+    static GLuint frame = 0;
+    if (frame++ == 0 || dirty)
+    {
+#if 1
+        // clear scene
+        btCollisionObjectArray const& objs = dynamicWorld->getCollisionObjectArray();
+        for (int i = objs.size() - 1; i >= 0; i--)
+        {
+            btCollisionObject *obj = objs[i];
+            btRigidBody *body = btRigidBody::upcast(obj);
+            if (body)
+            {
+                if (body->getMotionState())
+                    delete body->getMotionState();
+                if (body->getCollisionShape())
+                    delete body->getCollisionShape();
+            }
+            dynamicWorld->removeCollisionObject(obj);
+            delete obj;
+        }
+#endif
+
         dynamicWorld->setGravity(btVector3(0,-10,0));
-
-        btTransform world, local;
-        world.setIdentity();
-        local.setIdentity();
-
         btRigidBody *ground = new btRigidBody( 0, NULL,
             new btStaticPlaneShape(btVector3(0,1,0), -0.05) );
-        ground->setDamping(.1, .1);
+        ground->setDamping(.5, .5);
         ground->setFriction(.5);
         ground->setRestitution(.5);
         dynamicWorld->addRigidBody(ground);
 
-        world.setOrigin(btVector3(0,2,0));
-        btCollisionShape *shape = new btCapsuleShape(.2,.5);
-        float mass = 1.;
-        btVector3 inertia = btVector3(0,0,0);
-        shape->calculateLocalInertia(mass, inertia);
-        btRigidBody *rb1 = new btRigidBody(
-            btRigidBody::btRigidBodyConstructionInfo(
-            mass, new btDefaultMotionState( world, local ), shape, inertia) );
-        rb1->setDamping(.2, .2);
-        rb1->setFriction(.5);
-        rb1->setRestitution(.5);
-        rb1->setCollisionFlags(btCollisionObject::CF_KINEMATIC_OBJECT);
-        dynamicWorld->addRigidBody(rb1);
-
-        world.setOrigin(btVector3(0,1,0));
-        btRigidBody *rb2 = new btRigidBody(
-            btRigidBody::btRigidBodyConstructionInfo(
-            mass, new btDefaultMotionState( world, local ), shape, inertia) );
-        rb2->setDamping(.2, .2);
-        rb2->setFriction(.5);
-        rb2->setRestitution(.5);
-        rb2->setLinearVelocity(btVector3(1,0,0));
-        rb2->setAngularVelocity(btVector3(1,0,1));
-        dynamicWorld->addRigidBody(rb2);
-
-        btTransform frameA, frameB;
-        frameA.setIdentity();
-        frameB.setIdentity();
-        frameA.setOrigin(btVector3(0,1,0));
-        frameB.setOrigin(btVector3(0,2,0));
-        btTypedConstraint *joint1 = new btFixedConstraint(*rb1, *rb2, frameA, frameB);
-        joint1->setDbgDrawSize(2.0);
-        joint1->setEnabled(true);
-        dynamicWorld->addConstraint(joint1, true);
-
-        vector<vec3> V;
-        FILE* file = fopen( "../unity.tri", "r" );
-        if (file)
+        for (int i=0; i<bindPos.size(); i++)
         {
-            float a, b, c, d, e, f, g, h, i;
-            for (;;)
-            {
-                int eof = fscanf( file, "%f %f %f %f %f %f %f %f %f\n",
-                    &a, &b, &c, &d, &e, &f, &g, &h, &i );
-                if (eof < 0) break;
-                V << vec3(a, b, c);
-                V << vec3(d, e, f);
-                V << vec3(g, h, i);
-            }
-            fclose( file );
+            if (shapeType[i] <= 0) continue;
+
+            btVector3 desc = shapeDesc[i];
+            btVector3 a = bindPos[i];
+            btVector3 b = bindPos[parents[i]];
+            btVector3 c = (a + b) * 0.5f;
+            btScalar x = desc.x();
+            btScalar y = desc.y() > 0 ? desc.y() : (a - b).length() - x*2;
+            btScalar z = desc.z();
+            btScalar t = shapeType[i];
+            rotationAlign(vec3(1), vec3(1));
+
+            btTransform world, local;
+            world.setIdentity();
+            local.setIdentity();
+            world.setOrigin( c );
+            world.getBasis().setEulerYPR(M_PI_2*(t == 2),M_PI_2*(t == 3),0);
+
+            // btCollisionShape *shape = new btBoxShape(btVector3(x,y,z));
+            btCollisionShape *shape = new btCapsuleShape(x, y);
+
+            btVector3 inertia;
+            btScalar  mass = 1.0;
+            shape->calculateLocalInertia(mass, inertia);
+            btRigidBody *rb = new btRigidBody(
+                btRigidBody::btRigidBodyConstructionInfo(
+                mass, new btDefaultMotionState( world, local ), shape, inertia) );
+            dynamicWorld->addRigidBody(rb);
+            rb->setCollisionFlags(btCollisionObject::CF_KINEMATIC_OBJECT);
         }
-
-        Bvh bvh; bvh.Build(V);
-        vector<Tri> const& U = bvh.tri;
-        vector<Node> const& N = bvh.bvhNode;
-
-        GLuint ssbo2, ssbo3;
-        glGenBuffers(1, &ubo1);
-        glGenBuffers(1, &ssbo1);
-        glGenBuffers(1, &ssbo2);
-        glGenBuffers(1, &ssbo3);
-        glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo2);
-        glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof U[0] * U.size(), U.data(), GL_STATIC_DRAW);
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ssbo2);
-        glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo3);
-        glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof N[0] * N.size(), N.data(), GL_STATIC_DRAW);
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, ssbo3);
     }
 
     static float lastFrameTime = 0;
     float dt = t - lastFrameTime;
     lastFrameTime = t;
     dynamicWorld->stepSimulation(dt);
+    btIDebugDraw *dd = dynamicWorld->getDebugDrawer();
+    dd->clearLines();
     dynamicWorld->debugDrawWorld();
 
-    vector<Instance> I;
+    I.clear();
     btCollisionObjectArray const& arr = dynamicWorld->getCollisionObjectArray();
     for (int i=0; i<arr.size(); i++)
     {
@@ -116,8 +150,11 @@ extern "C" void mainAnimation(float t, btDynamicsWorld *dynamicWorld)
         btCollisionShape *shape = body->getCollisionShape();
         float d1 = -((btStaticPlaneShape*)shape)->getPlaneConstant();
         btVector3 h1 = ((btBoxShape*)shape)->getHalfExtentsWithMargin();
+        float h2 = ((btCylinderShape*)shape)->getHalfExtentsWithMargin().y();
+        float h3 = ((btConeShape*)shape)->getHeight();
         float r1 = ((btSphereShape*)shape)->getRadius();
         float r2 = ((btCapsuleShape*)shape)->getRadius();
+        float r4 = ((btConeShape*)shape)->getRadius();
 
         mat4 mat;
         Instance insta;
@@ -125,14 +162,7 @@ extern "C" void mainAnimation(float t, btDynamicsWorld *dynamicWorld)
         pose.getOpenGLMatrix(&mat[0][0]);
         insta.pose = mat3x4(transpose(mat));
 
-        if (i == arr.size()-2)
-        {
-            pose.setOrigin(pose.getOrigin() + btVector3(0.5,0,0.5)*dt);
-            body->setWorldTransform(pose);
-        }
-
-        switch (shape->getShapeType())
-        {
+        switch (shape->getShapeType()) {
         case STATIC_PLANE_PROXYTYPE:
             insta.par = vec4(d1,0,0,intBitsToFloat(-1));
             break;
@@ -150,26 +180,15 @@ extern "C" void mainAnimation(float t, btDynamicsWorld *dynamicWorld)
         }
         case CYLINDER_SHAPE_PROXYTYPE:
         {
-            float h3 = ((btCylinderShape*)shape)->getHalfExtentsWithMargin().y();
             float r3 = ((btCylinderShape*)shape)->getRadius();
-            insta.par = vec4(h3,r3,0,intBitsToFloat(3));
+            insta.par = vec4(h2,r3,0,intBitsToFloat(3));
             break;
         }
         case CONE_SHAPE_PROXYTYPE:
-            float h4 = ((btConeShape*)shape)->getHeight();
-            float r4 = ((btConeShape*)shape)->getRadius();
-            insta.par = vec4(h4,r4,0,intBitsToFloat(4));
+            insta.par = vec4(h3,r4,0,intBitsToFloat(4));
             break;
         }
 
         I.push_back(insta);
     }
-
-    uint data[] = { (uint)I.size() };
-    glBindBuffer(GL_UNIFORM_BUFFER, ubo1);
-    glBufferData(GL_UNIFORM_BUFFER, sizeof data, data, GL_DYNAMIC_DRAW);
-    glBindBufferBase(GL_UNIFORM_BUFFER, 0, ubo1);
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo1);
-    glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof I[0] * I.size(), I.data(), GL_DYNAMIC_DRAW);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssbo1);
 }

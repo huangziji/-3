@@ -31,15 +31,15 @@ struct Hit
 
 Hit castRay(in vec3 ro, in vec3 rd);
 
+uniform mat2x3 iCamera;
 uniform vec2 iResolution;
-uniform float iTime;
 out vec4 fragColor;
 void main()
 {
-    float ti = iTime;
+    vec3 ta = iCamera[0];
+    vec3 ro = iCamera[1];
+
     vec2 uv = (2.0*gl_FragCoord.xy-iResolution.xy) / iResolution.y;
-    vec3 ta = vec3(0,0,0);
-    vec3 ro = ta + vec3(sin(ti),0.5,cos(ti)) * 2.5;
     mat3 ca = setCamera(ro, ta, 0.0);
     vec3 rd = ca * normalize(vec3(uv, 1.2));
 
