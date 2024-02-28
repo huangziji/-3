@@ -67,7 +67,7 @@ void main()
     }
 
     col = pow(col, vec3(0.4545));
-    fragColor = vec4(col, 1);
+    fragColor = vec4(col, 1.);
 
     const float n = 0.1, f = 1000.0;
     const float p10 = (f+n)/(f-n), p11 = -2.0*f*n/(f-n); // from perspective matrix
@@ -76,16 +76,11 @@ void main()
     gl_FragDepth = (ndc*gl_DepthRange.diff + gl_DepthRange.near + gl_DepthRange.far) / 2.0;
 }
 
-struct Instance{
-    vec4 par;
-    mat4x3 pose;
-};
-
 layout (std140, binding = 0) uniform U0 {
     int instanceCount;
 };
 
-layout (std430, binding = 0, row_major) buffer IN_0 { Instance instance[]; };
+layout (std430, binding = 0) buffer IN_0 { mat4 matrix[]; };
 
 vec4 plaIntersect( in vec3 ro, in vec3 rd, in vec4 p );
 vec4 boxIntersect( in vec3 ro, in vec3 rd, in vec3 h );
@@ -103,11 +98,12 @@ Hit castRay(in vec3 ro, in vec3 rd)
 
     for (int i=0; i<instanceCount; i++)
     {
+        vec3 par = vec3(transpose(matrix[i])[3].xyz);
+        int type = floatBitsToInt(matrix[i][3][3]);
+        vec3 pos = matrix[i][3].xyz;
+        mat3 rot = mat3(matrix[i]);
+
         vec4 h;
-        vec3 par = instance[i].par.xyz;
-        int type = floatBitsToInt(instance[i].par.w);
-        mat3 rot = mat3(instance[i].pose);
-        vec3 pos = instance[i].pose[3];
         vec3 O = (ro-pos) * rot;
         vec3 D = rd * rot;
         switch(type)
@@ -158,7 +154,7 @@ vec4 boxIntersect( in vec3 ro, in vec3 rd, vec3 h )
     vec3 t2 = -n + k;
     float tN = max( max( t1.x, t1.y ), t1.z );
     float tF = min( min( t2.x, t2.y ), t2.z );
-    if( tN>tF || tF<0.0) return vec4(-1.0);
+    if( tN>tF || tF<0.0) return vec4(1e30f);
     vec3 nor = (tN>0.0) ? step(vec3(tN),t1) : step(t2,vec3(tF));
         nor *= -sign(rd);
     return vec4( tN, nor );

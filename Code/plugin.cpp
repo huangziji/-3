@@ -1,10 +1,12 @@
+#include "ragdoll.cpp"
 #include "common.h"
 #include <glad/glad.h>
 #include <stdio.h>
-#include <boost/container/vector.hpp>
-using boost::container::vector;
+#include <sys/stat.h>
+#include <glm/glm.hpp>
+using namespace glm;
 #include <btBulletDynamicsCommon.h>
-
+template <typename T> using vector = btAlignedObjectArray<T>;
 template <class T> vector<T> &operator,(vector<T> &a, T const& b) { return a << b; }
 template <class T> vector<T> &operator<<(vector<T> &a, T const& b)
 {
@@ -12,17 +14,33 @@ template <class T> vector<T> &operator<<(vector<T> &a, T const& b)
     return a;
 }
 
-typedef struct{ vec4 par; mat3x4 pose; }Instance;
-#include <sys/stat.h>
+struct { float x,y,z,a,b,c; } const RagdollDesc[] = {
+    0.00, 1.00, 0.00, 0.15, 0.10, 0.10,
+    0.00, 1.20, 0.00, 0.11, 0.10, 0.08,
+    0.00, 1.40, 0.00, 0.15, 0.10, 0.10,
+    0.00, 1.60, 0.00, 0.04, 0.02, 0.04,
+    0.00, 1.65, 0.00, 0.08, 0.10, 0.10,
+    0.00, 1.85, 0.00, -1.00, -1.00, -1.00,
+    0.10, 1.00, 0.00, 0.05, 0.24, 0.05,
+    0.10, 0.50, 0.00, 0.05, 0.24, 0.05,
+    0.10, 0.00, 0.00, 0.05, 0.05, 0.08,
+    0.10, 0.00, 0.15, -1.00, -1.00, -1.00,
+    0.15, 1.55, 0.00, 0.12, 0.06, 0.06,
+    0.38, 1.55, 0.00, 0.10, 0.06, 0.06,
+    0.60, 1.55, 0.00, 0.06, 0.06, 0.06,
+    0.70, 1.55, 0.00, -1.00, -1.00, -1.00,
+    -0.10, 1.00, 0.00, 0.05, 0.24, 0.05,
+    -0.10, 0.50, 0.00, 0.05, 0.24, 0.05,
+    -0.10, 0.00, 0.00, 0.05, 0.05, 0.08,
+    -0.10, 0.00, 0.15, -1.00, -1.00, -1.00,
+    -0.15, 1.55, 0.00, 0.12, 0.06, 0.06,
+    -0.38, 1.55, 0.00, 0.10, 0.06, 0.06,
+    -0.60, 1.55, 0.00, 0.06, 0.06, 0.06,
+    -0.70, 1.55, 0.00, -1.00, -1.00, -1.00,
+};
 
-extern "C" void mainAnimation(btAlignedObjectArray<Instance> & I, btDynamicsWorld *dynamicWorld, float t)
+extern "C" void mainAnimation(vector<mat4> & I, btDynamicsWorld *dynamicWorld, float t)
 {
-    static vector<int> parents;
-    static vector<btVector3> bindPos;
-    static vector<int> shapeType;
-    static vector<btVector3> shapeDesc;
-    bool dirty = false;
-
     {
         static long lastModTime;
         const char *filename = "../Code/rig.csv";
@@ -31,16 +49,6 @@ extern "C" void mainAnimation(btAlignedObjectArray<Instance> & I, btDynamicsWorl
         int err = stat(filename, &libStat);
         if (err == 0 && lastModTime != libStat.st_mtime)
         {
-            parents.clear();
-            bindPos.clear();
-            shapeDesc.clear();
-            shapeType.clear();
-            parents << -1;
-            bindPos << btVector3();
-            shapeType << -1;
-            shapeDesc << btVector3();
-            dirty = true;
-
             lastModTime = libStat.st_mtime;
             printf("INFO: reloading file %s\n", filename);
             FILE *file = fopen(filename, "r");
@@ -50,20 +58,15 @@ extern "C" void mainAnimation(btAlignedObjectArray<Instance> & I, btDynamicsWorl
                 for (;;)
                 {
                     long cur = ftell(file);
-                    int b,c;
-                    float d,e,f,g,h,i;
-                    int eof = fscanf( file, "%[^,],%d,%d,%f,%f,%f,%f,%f,%f",
-                        buffer, &b, &c, &d, &e, &f, &g, &h, &i );
+                    int a;
+                    float b,c,d,e,f,g,h,i;
+                    int eof = fscanf( file, "%[^,],%d,%f,%f,%f,%f,%f,%f,%f",
+                        buffer, &a, &b, &c, &d, &e, &f, &g, &h, &i );
                     if (eof < 0) break;
                     fseek(file, cur, SEEK_SET);
                     fgets(buffer, sizeof buffer, file);
-                    // printf("%d %f %f %f %f %f %f\n",
-                           // p, a, b, c, d, e, f);
-
-                    parents << b;
-                    shapeType << c;
-                    bindPos << btVector3(d,e,f);
-                    shapeDesc << btVector3(g,h,i);
+                    // printf("%d, %.2f, %.2f, %.2f, %.2f, %.2f, %.2f,\n",
+                           // a, b, c, d, e, f, g);
                 }
                 fclose( file );
             }
@@ -71,26 +74,30 @@ extern "C" void mainAnimation(btAlignedObjectArray<Instance> & I, btDynamicsWorl
     }
 
     static GLuint frame = 0;
-    if (frame++ == 0 || dirty)
+    if (frame++ == 0)
     {
-#if 1
-        // clear scene
-        btCollisionObjectArray const& objs = dynamicWorld->getCollisionObjectArray();
-        for (int i = objs.size() - 1; i >= 0; i--)
-        {
-            btCollisionObject *obj = objs[i];
-            btRigidBody *body = btRigidBody::upcast(obj);
-            if (body)
+        { // clear dynamics world
+            for (int i = dynamicWorld->getNumConstraints() - 1; i >= 0; i--)
             {
-                if (body->getMotionState())
-                    delete body->getMotionState();
-                if (body->getCollisionShape())
-                    delete body->getCollisionShape();
+                btTypedConstraint *joint = dynamicWorld->getConstraint(i);
+                dynamicWorld->removeConstraint(joint);
+                delete joint;
             }
-            dynamicWorld->removeCollisionObject(obj);
-            delete obj;
+            for (int i = dynamicWorld->getNumCollisionObjects() - 1; i >= 0; i--)
+            {
+                btCollisionObject *obj = dynamicWorld->getCollisionObjectArray()[i];
+                btRigidBody *body = btRigidBody::upcast(obj);
+                if (body)
+                {
+                    if (body->getMotionState())
+                        delete body->getMotionState();
+                    if (body->getCollisionShape())
+                        delete body->getCollisionShape();
+                }
+                dynamicWorld->removeCollisionObject(obj);
+                delete obj;
+            }
         }
-#endif
 
         dynamicWorld->setGravity(btVector3(0,-10,0));
         btRigidBody *ground = new btRigidBody( 0, NULL,
@@ -100,38 +107,71 @@ extern "C" void mainAnimation(btAlignedObjectArray<Instance> & I, btDynamicsWorl
         ground->setRestitution(.5);
         dynamicWorld->addRigidBody(ground);
 
-        for (int i=0; i<bindPos.size(); i++)
+        const ivec2 bodypartIdx[] = {
+            {0,1},{1,2},{2,3},{3,4},{4,5},
+            {6,7},{7,8},{8,9},
+            {10,11},{11,12},{12,13},
+            {14,15},{15,16},{16,17},
+            {18,19},{19,20},{20,21},
+        };
+        const ivec2 jointIdx[] = {
+            {1,0},{1,2},{2,3},{3,4},
+            {0,6},{6,7},{7,8},
+            {2,10},{10,11},{11,12},
+            {0,14},{14,15},{15,16},
+            {2,18},{18,19},{19,20},
+        };
+
+        vector<btRigidBody*> tmpBodyparts;
+        tmpBodyparts.resize(sizeof RagdollDesc/sizeof RagdollDesc[0], NULL);
+        for (ivec2 ij : bodypartIdx)
         {
-            if (shapeType[i] <= 0) continue;
+            int i = ij.x, j = ij.y;
+            btVector3 e = btVector3(RagdollDesc[i].a, RagdollDesc[i].b, RagdollDesc[i].c);
+            btVector3 a = btVector3(RagdollDesc[i].x, RagdollDesc[i].y, RagdollDesc[i].z);
+            btVector3 b = btVector3(RagdollDesc[j].x, RagdollDesc[j].y, RagdollDesc[j].z);
+            btVector3 c = (a + b) * .5;
 
-            btVector3 desc = shapeDesc[i];
-            btVector3 a = bindPos[i];
-            btVector3 b = bindPos[parents[i]];
-            btVector3 c = (a + b) * 0.5f;
-            btScalar x = desc.x();
-            btScalar y = desc.y() > 0 ? desc.y() : (a - b).length() - x*2;
-            btScalar z = desc.z();
-            btScalar t = shapeType[i];
-            rotationAlign(vec3(1), vec3(1));
-
-            btTransform world, local;
-            world.setIdentity();
-            local.setIdentity();
-            world.setOrigin( c );
-            world.getBasis().setEulerYPR(M_PI_2*(t == 2),M_PI_2*(t == 3),0);
-
-            // btCollisionShape *shape = new btBoxShape(btVector3(x,y,z));
-            btCollisionShape *shape = new btCapsuleShape(x, y);
-
+            btCollisionShape *shape = new btBoxShape(e);
+            btTransform pose;
+            pose.setIdentity();
+            pose.setOrigin(c);
+            btTransform dummy;
+            dummy.setIdentity();
             btVector3 inertia;
-            btScalar  mass = 1.0;
+            btScalar  mass = e.x()*e.y()*e.z() * 300.;
             shape->calculateLocalInertia(mass, inertia);
             btRigidBody *rb = new btRigidBody(
                 btRigidBody::btRigidBodyConstructionInfo(
-                mass, new btDefaultMotionState( world, local ), shape, inertia) );
+                mass, new btDefaultMotionState( pose, dummy ), shape, inertia) );
             dynamicWorld->addRigidBody(rb);
-            rb->setCollisionFlags(btCollisionObject::CF_KINEMATIC_OBJECT);
+            tmpBodyparts[i] = rb;
+            rb->setDamping(.5,.5);
+            rb->setFriction(.5);
+            rb->setRestitution(.5);
+            // rb->setCollisionFlags(btCollisionObject::CF_KINEMATIC_OBJECT);
         }
+        for (ivec2 ij : jointIdx)
+        {
+            int i = ij.x, j = ij.y;
+            btVector3 a = btVector3(RagdollDesc[j].x, RagdollDesc[j].y, RagdollDesc[j].z);
+            btRigidBody *rb1 = tmpBodyparts[i];
+            btRigidBody *rb2 = tmpBodyparts[j];
+            assert(rb1 && rb2);
+
+            btTransform localA, localB;
+            localA.setIdentity();
+            localB.setIdentity();
+            localA.setOrigin(a - rb1->getWorldTransform().getOrigin());
+            localB.setOrigin(a - rb2->getWorldTransform().getOrigin());
+            btGeneric6DofConstraint *joint = new btGeneric6DofConstraint(
+                        *rb1, *rb2, localA, localB, false);
+            dynamicWorld->addConstraint(joint, i==2||i==0);
+            joint->setBreakingImpulseThreshold(0xffff);
+        }
+
+        btRigidBody::upcast(dynamicWorld->getCollisionObjectArray()[3])
+                ->applyCentralImpulse(btVector3(0,0,-10));
     }
 
     static float lastFrameTime = 0;
@@ -156,39 +196,37 @@ extern "C" void mainAnimation(btAlignedObjectArray<Instance> & I, btDynamicsWorl
         float r2 = ((btCapsuleShape*)shape)->getRadius();
         float r4 = ((btConeShape*)shape)->getRadius();
 
-        mat4 mat;
-        Instance insta;
+        mat4 m;
         btTransform pose = body->getWorldTransform();
-        pose.getOpenGLMatrix(&mat[0][0]);
-        insta.pose = mat3x4(transpose(mat));
+        pose.getOpenGLMatrix(&m[0][0]);
 
         switch (shape->getShapeType()) {
         case STATIC_PLANE_PROXYTYPE:
-            insta.par = vec4(d1,0,0,intBitsToFloat(-1));
+            m[0][3] = d1, m[3][3] = intBitsToFloat(-1);
             break;
         case BOX_SHAPE_PROXYTYPE:
-            insta.par = vec4(h1.x(),h1.y(),h1.z(),intBitsToFloat(0));
+            m[0][3] = h1.x(), m[1][3] = h1.y(),
+            m[2][3] = h1.z(), m[3][3] = intBitsToFloat(0);
             break;
         case SPHERE_SHAPE_PROXYTYPE:
-            insta.par = vec4(r1,0,0,intBitsToFloat(1));
+            m[0][3] = r1, m[3][3] = intBitsToFloat(1);
             break;
         case CAPSULE_SHAPE_PROXYTYPE:
-        {
-            float h2 = ((btCapsuleShape*)shape)->getHalfHeight();
-            insta.par = vec4(h2,r2,0,intBitsToFloat(2));
+            m[0][3] = ((btCapsuleShape*)shape)->getHalfHeight(),
+            m[1][3] = r2,
+            m[3][3] = intBitsToFloat(2);
             break;
-        }
         case CYLINDER_SHAPE_PROXYTYPE:
-        {
-            float r3 = ((btCylinderShape*)shape)->getRadius();
-            insta.par = vec4(h2,r3,0,intBitsToFloat(3));
+            m[0][3] = h2,
+            m[1][3] = ((btCylinderShape*)shape)->getRadius(),
+            m[3][3] = intBitsToFloat(3);
             break;
-        }
         case CONE_SHAPE_PROXYTYPE:
-            insta.par = vec4(h3,r4,0,intBitsToFloat(4));
+            m[0][3] = h3, m[1][3] = r4,
+            m[3][3] = intBitsToFloat(4);
             break;
         }
 
-        I.push_back(insta);
+        I.push_back(m);
     }
 }

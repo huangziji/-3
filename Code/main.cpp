@@ -4,12 +4,13 @@
 #include <stdio.h>
 #include <assert.h>
 #include <btBulletDynamicsCommon.h>
+template <typename T> using vector = btAlignedObjectArray<T>;
 
 class MyDebugDraw : public btIDebugDraw
 {
     int _debugMode;
 public:
-    btAlignedObjectArray<btVector3> _data;
+    vector<btVector3> _data;
     void clearLines() override final { _data.clear(); }
     void drawLine(const btVector3& from, const btVector3& to, const btVector3& color) override final
     {
@@ -27,9 +28,7 @@ public:
 
     virtual int getDebugMode() const override final
     {
-        // return _debugMode;
-        return DBG_DrawAabb;//|DBG_DrawWireframe|
-                    //DBG_DrawConstraints|DBG_DrawConstraintLimits;
+        return DBG_DrawConstraints;//|DBG_DrawConstraintLimits;
     }
 };
 
@@ -38,8 +37,38 @@ static void error_callback(int _, const char* desc)
     fprintf(stderr, "ERROR: %s\n", desc);
 }
 
+#include "bvh.h"
+
+template <typename T> static vector<T> &operator,(vector<T> &a, T b) { return a<<b; }
+template <typename T> static vector<T> &operator<<(vector<T> &a, T b)
+{
+    a.push_back(b);
+    return a;
+}
+
 int main()
 {
+    int idx = 0;
+    vector<int> F;
+    vector<vec3> U;
+    FILE* file = fopen( "../unity.tri", "r" );
+    if (file)
+    {
+        float a, b, c, d, e, f, g, h, i;
+        for (;;)
+        {
+            int eof = fscanf( file, "%f %f %f %f %f %f %f %f %f\n",
+                &a, &b, &c, &d, &e, &f, &g, &h, &i );
+            if (eof < 0) break;
+            U << vec3(a, b, c), vec3(d, e, f), vec3(g, h, i);
+            F << idx++;
+        }
+        fclose( file );
+    }
+
+    Bvh simpleBvh;
+    simpleBvh.Build(U);
+
     MyDebugDraw *dd = new MyDebugDraw;
     btCollisionConfiguration *conf = new btDefaultCollisionConfiguration;
     btDynamicsWorld *dynamicWorld = new btDiscreteDynamicsWorld(
@@ -68,27 +97,9 @@ int main()
        // glfwSwapInterval(0);
     }
 
-    GLuint bufferA, tex1, tex2;
-    {
-        glGenTextures(1, &tex1);
-        glBindTexture(GL_TEXTURE_2D, tex1);
-        glTexStorage2D(GL_TEXTURE_2D, 1, GL_DEPTH_COMPONENT24, RES_X, RES_Y);
-        glGenTextures(1, &tex2);
-        glBindTexture(GL_TEXTURE_2D, tex2);
-        glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, RES_X, RES_Y);
-
-        GLenum drawBuffers[] = { GL_COLOR_ATTACHMENT0 };
-        glGenFramebuffers(1, &bufferA);
-        glBindFramebuffer(GL_FRAMEBUFFER, bufferA);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, tex1, 0);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex2, 0);
-        glReadBuffer(GL_NONE);
-        glDrawBuffers(1, drawBuffers);
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    }
-
     while (!glfwWindowShouldClose(window1))
     {
+        double xpos, ypos;
         float time = glfwGetTime();
         static uint32_t frame = -1;
         {
@@ -99,15 +110,19 @@ int main()
             char title[32];
             sprintf(title, "%.2f\t\t%.1f fps\t\t%d x %d", time, fps, RES_X, RES_Y);
             glfwSetWindowTitle(window1, title);
-            double xpos, ypos;
             glfwGetCursorPos(window1, &xpos, &ypos);
+            if (RES_X < xpos || xpos < 0 || RES_Y < ypos || ypos < 0) xpos = ypos = 0.;
         }
 
-        btAlignedObjectArray<btVector3> const& V = dd->_data;
+        float ti = xpos / RES_X * M_PI * 2. - 1.;//time;
+        btVector3 ta = btVector3(0,1,0);
+        btVector3 ro = ta + btVector3(sin(ti),ypos/RES_Y * 3. - .5,cos(ti)).normalize() * 2.f;
+
+        vector<btVector3> const& V = dd->_data;
         {
-            btAlignedObjectArray<btTransform> I;
-            void *f = loadPlugin("libBvhPlugin.so", "mainAnimation");
-            typedef void (plugin)(btAlignedObjectArray<btTransform> &, btDynamicsWorld*, float);
+            vector<btTransform> I;
+            void *f = loadPlugin("libRagdollPlugin.so", "mainAnimation");
+            typedef void (plugin)(vector<btTransform> &, btDynamicsWorld*, float);
             if (f) ((plugin*)f)(I, dynamicWorld, time);
 
             static GLuint vbo, ubo1, ssbo1, frame = 0;
@@ -116,6 +131,18 @@ int main()
                 glGenBuffers(1, &vbo);
                 glGenBuffers(1, &ubo1);
                 glGenBuffers(1, &ssbo1);
+
+                auto &U = simpleBvh.tri;
+                auto &N = simpleBvh.bvhNode;
+                GLuint ssbo2, ssbo3;
+                glGenBuffers(1, &ssbo2);
+                glGenBuffers(1, &ssbo3);
+                glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo2);
+                glBufferData(GL_SHADER_STORAGE_BUFFER, U.size() * sizeof U[0], &U[0], GL_STATIC_DRAW);
+                glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ssbo2);
+                glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo3);
+                glBufferData(GL_SHADER_STORAGE_BUFFER, N.size() * sizeof N[0], &N[0], GL_STATIC_DRAW);
+                glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, ssbo3);
             }
 
             glBindBuffer(GL_ARRAY_BUFFER, vbo);
@@ -135,8 +162,6 @@ int main()
         static GLuint prog1 = glCreateProgram();
         static GLuint prog2 = glCreateProgram();
         {
-            vec3 ta = vec3(0,1,0);
-            vec3 ro = ta + vec3(sin(time),0.5,cos(time)) * 2.f;
             static int iCamera1, iCamera2;
             static long lastModTime1, lastModTime2;
             bool dirty1 = reloadShader1(&lastModTime1, prog1, "../Code/base.frag");
@@ -153,7 +178,7 @@ int main()
                 int iResolution = glGetUniformLocation(prog2, "iResolution");
                 glProgramUniform2f(prog2, iResolution, RES_X, RES_Y);
             }
-            float data[] = { ta.x, ta.y, ta.z, ro.x, ro.y, ro.z };
+            const float data[] = { ta.x(), ta.y(), ta.z(), ro.x(), ro.y(), ro.z() };
             glProgramUniformMatrix2x3fv(prog1, iCamera1, 1, GL_FALSE, data);
             glProgramUniformMatrix2x3fv(prog2, iCamera2, 1, GL_FALSE, data);
         }
@@ -161,20 +186,22 @@ int main()
         glDepthMask(1);
         glFrontFace(GL_CCW);
         glDepthFunc(GL_LESS);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         glEnable(GL_CULL_FACE);
         glEnable(GL_DEPTH_TEST);
+        glEnable(GL_BLEND);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
         glUseProgram(prog1);
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
         glDepthMask(0);
+        glDisable(GL_DEPTH_TEST);
         glUseProgram(prog2);
         glDrawArrays(GL_LINES, 0, V.size());
 
         glfwSwapBuffers(window1);
         glfwPollEvents();
-
         // if (!recordVideo(5.39)) break;
     }
 

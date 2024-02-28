@@ -1,52 +1,52 @@
 cmake_minimum_required(VERSION 3.15)
-project(Bvh)
+project(Ragdoll)
 
 include(../build/conan_toolchain.cmake)
 find_package(Bullet REQUIRED)
 find_package(recastnavigation REQUIRED)
 
 set(CMAKE_PREFIX_PATH /home/edwde/.local/micromamba/envs/Bvh/)
+add_definitions(-DGLFW_INCLUDE_NONE)
 find_package(glfw3 REQUIRED)
 find_package(glad  REQUIRED)
 find_package(glm   REQUIRED)
 
-add_definitions(-DGLFW_INCLUDE_NONE)
-
-add_executable(Bvh main.cpp base.frag base.glsl)
-target_link_libraries(Bvh glfw glad dl BvhCommon
+add_executable(Ragdoll main.cpp base.frag base.glsl bvh.h)
+target_link_libraries(Ragdoll glfw glad dl
+    RagdollCommon
     BulletSoftBody
     Bullet3Common
     BulletDynamics
     BulletCollision
     LinearMath
 )
-target_link_directories(Bvh PRIVATE
+target_link_directories(Ragdoll PRIVATE
     ${CMAKE_PREFIX_PATH}/lib
     ${CMAKE_BINARY_DIR}
     ${CMAKE_LIBRARY_PATH}
 )
-target_include_directories(Bvh PRIVATE
+target_include_directories(Ragdoll PRIVATE
     ${CMAKE_INCLUDE_PATH}
 )
-add_library(BvhCommon common.cpp common.h)
-target_include_directories(BvhCommon PRIVATE
+add_library(RagdollCommon common.cpp common.h)
+target_include_directories(RagdollCommon PRIVATE
     ${CMAKE_PREFIX_PATH}/include
 )
-target_compile_options(BvhCommon PRIVATE -fPIC)
+target_compile_options(RagdollCommon PRIVATE -fPIC)
 
-add_library(BvhPlugin SHARED plugin.cpp bvh.h rig.csv)
-target_include_directories(BvhPlugin PRIVATE
+add_library(RagdollPlugin SHARED plugin.cpp rig.csv ragdoll.cpp)
+target_include_directories(RagdollPlugin PRIVATE
     ${CMAKE_PREFIX_PATH}/include
     ${CMAKE_INCLUDE_PATH}
 )
-target_link_directories(BvhPlugin PRIVATE
+target_link_directories(RagdollPlugin PRIVATE
     ${CMAKE_LIBRARY_PATH}
 )
-target_link_libraries(BvhPlugin PRIVATE
+target_link_libraries(RagdollPlugin PRIVATE
     BulletSoftBody
     Bullet3Common
     BulletDynamics
     BulletCollision
     LinearMath
-    BvhCommon
+    RagdollCommon
 )

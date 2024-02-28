@@ -2,8 +2,8 @@
 #define BVH_H
 #include <glm/glm.hpp>
 using namespace glm;
-#include <boost/container/vector.hpp>
-using boost::container::vector;
+#include <btBulletDynamicsCommon.h>
+template <typename T> using vector = btAlignedObjectArray<T>;
 
 /// @link https://jacco.ompf2.com/2022/04/13/how-to-build-a-bvh-part-1-basics/
 struct Node

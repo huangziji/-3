@@ -54,7 +54,8 @@ static int loadShader(int N, GLuint prog, const char *filename)
             char message[length];
             glGetShaderInfoLog(fs, length, &length, message);
             glDeleteShader(fs);
-            fprintf(stderr, "ERROR: fail to compile fragment shader. file %s\n%s\n", filename, message);
+            fprintf(stderr, "ERROR: fail to compile %s shader. file %s\n%s\n",
+                    i == 0 ? "fragment" : "vertex", filename, message);
             return 1;
         }
         newShader[i] = fs;
