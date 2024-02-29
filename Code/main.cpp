@@ -28,7 +28,7 @@ public:
 
     virtual int getDebugMode() const override final
     {
-        return DBG_DrawConstraints;//|DBG_DrawConstraintLimits;
+        return DBG_DrawConstraints;//|DBG_DrawWireframe;
     }
 };
 

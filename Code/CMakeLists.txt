@@ -34,7 +34,7 @@ target_include_directories(RagdollCommon PRIVATE
 )
 target_compile_options(RagdollCommon PRIVATE -fPIC)
 
-add_library(RagdollPlugin SHARED plugin.cpp rig.csv ragdoll.cpp)
+add_library(RagdollPlugin SHARED plugin.cpp rig.csv)
 target_include_directories(RagdollPlugin PRIVATE
     ${CMAKE_PREFIX_PATH}/include
     ${CMAKE_INCLUDE_PATH}
