@@ -37,8 +37,6 @@ static void error_callback(int _, const char* desc)
     fprintf(stderr, "ERROR: %s\n", desc);
 }
 
-#include "bvh.h"
-
 template <typename T> static vector<T> &operator,(vector<T> &a, T b) { return a<<b; }
 template <typename T> static vector<T> &operator<<(vector<T> &a, T b)
 {
@@ -48,27 +46,6 @@ template <typename T> static vector<T> &operator<<(vector<T> &a, T b)
 
 int main()
 {
-    int idx = 0;
-    vector<int> F;
-    vector<vec3> U;
-    FILE* file = fopen( "../unity.tri", "r" );
-    if (file)
-    {
-        float a, b, c, d, e, f, g, h, i;
-        for (;;)
-        {
-            int eof = fscanf( file, "%f %f %f %f %f %f %f %f %f\n",
-                &a, &b, &c, &d, &e, &f, &g, &h, &i );
-            if (eof < 0) break;
-            U << vec3(a, b, c), vec3(d, e, f), vec3(g, h, i);
-            F << idx++;
-        }
-        fclose( file );
-    }
-
-    Bvh simpleBvh;
-    simpleBvh.Build(U);
-
     MyDebugDraw *dd = new MyDebugDraw;
     btCollisionConfiguration *conf = new btDefaultCollisionConfiguration;
     btDynamicsWorld *dynamicWorld = new btDiscreteDynamicsWorld(
@@ -131,18 +108,6 @@ int main()
                 glGenBuffers(1, &vbo);
                 glGenBuffers(1, &ubo1);
                 glGenBuffers(1, &ssbo1);
-
-                auto &U = simpleBvh.tri;
-                auto &N = simpleBvh.bvhNode;
-                GLuint ssbo2, ssbo3;
-                glGenBuffers(1, &ssbo2);
-                glGenBuffers(1, &ssbo3);
-                glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo2);
-                glBufferData(GL_SHADER_STORAGE_BUFFER, U.size() * sizeof U[0], &U[0], GL_STATIC_DRAW);
-                glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, ssbo2);
-                glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo3);
-                glBufferData(GL_SHADER_STORAGE_BUFFER, N.size() * sizeof N[0], &N[0], GL_STATIC_DRAW);
-                glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, ssbo3);
             }
 
             glBindBuffer(GL_ARRAY_BUFFER, vbo);

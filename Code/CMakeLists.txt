@@ -4,6 +4,7 @@ project(Ragdoll)
 include(../build/conan_toolchain.cmake)
 find_package(Bullet REQUIRED)
 find_package(recastnavigation REQUIRED)
+find_package(openfbx REQUIRED)
 
 set(CMAKE_PREFIX_PATH /home/edwde/.local/micromamba/envs/Bvh/)
 add_definitions(-DGLFW_INCLUDE_NONE)
@@ -34,7 +35,7 @@ target_include_directories(RagdollCommon PRIVATE
 )
 target_compile_options(RagdollCommon PRIVATE -fPIC)
 
-add_library(RagdollPlugin SHARED plugin.cpp rig.csv)
+add_library(RagdollPlugin SHARED plugin.cpp database.cpp rig.csv)
 target_include_directories(RagdollPlugin PRIVATE
     ${CMAKE_PREFIX_PATH}/include
     ${CMAKE_INCLUDE_PATH}
@@ -49,4 +50,6 @@ target_link_libraries(RagdollPlugin PRIVATE
     BulletCollision
     LinearMath
     RagdollCommon
+    OpenFBX
+    miniz
 )

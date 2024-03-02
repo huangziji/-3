@@ -1,6 +1,7 @@
 [requires]
 bullet3/3.25
 recastnavigation/cci.20200511
+openfbx/cci.20210426
 
 [generators]
 CMakeDeps

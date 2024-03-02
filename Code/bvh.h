@@ -26,7 +26,7 @@ class Bvh
 public:
     vector<Tri> tri;
     vector<Node> bvhNode;
-    void Build(vector<vec3> const& V);
+    void Build(const char *);
 private:
     float FindBestSplitPlane( Node& node, int& axis, float& splitPos );
     void UpdateNodeBounds( uint );
@@ -36,18 +36,32 @@ private:
     uint nodesUsed = 2;
 };
 
-void Bvh::Build(vector<vec3> const& V)
+void Bvh::Build(const char *filename)
 {
-    tri.resize(V.size()/3);
+    FILE* file = fopen( filename, "r" );
+    if (file)
+    {
+        float a, b, c, d, e, f, g, h, i;
+        for (;;)
+        {
+            int eof = fscanf( file, "%f %f %f %f %f %f %f %f %f\n",
+                &a, &b, &c, &d, &e, &f, &g, &h, &i );
+            if (eof < 0) break;
+            Tri t;
+            t.vertex0 = vec3(a,b,c);
+            t.vertex1 = vec3(d,e,f);
+            t.vertex2 = vec3(g,h,i);
+            tri.push_back(t);
+        }
+        fclose( file );
+    }
+
     triIdx.resize(tri.size());
     centroid.resize(tri.size());
     bvhNode.resize(tri.size() * 2);
 
     for (int i=0; i<tri.size(); i++)
     {
-        tri[i].vertex0 = V[i*3+0];
-        tri[i].vertex1 = V[i*3+1];
-        tri[i].vertex2 = V[i*3+2];
         triIdx[i] = i;
         centroid[i] = (tri[i].vertex0 + tri[i].vertex1 + tri[i].vertex2) * 0.3333f;
     }
