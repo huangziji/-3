@@ -105,7 +105,11 @@ mat3 rotateY(float a)
 #include <ofbx.h>
 using namespace ofbx;
 
-Matrix Identity()
+// const btHashString keywords = "mixamorig:" "Hips" "Spine2" "Head"
+    // "RightShoulder" "RightHand" "RightUpLeg" "RightFoot";
+
+
+Matrix makeIdentity()
 {
     dmat4 a(1);
     return (Matrix&)a;
@@ -117,13 +121,13 @@ Matrix operator*(Matrix a, Matrix b)
     return (Matrix&)c;
 }
 
-void drawRestPose(btIDebugDraw *dd, float t, const AnimationLayer *layer,
-                  const Object *node, Matrix parentWorld = Identity())
+void drawPose(btIDebugDraw *dd, float t, const AnimationLayer *layer,
+                  const Object *node, Matrix parentWorld = makeIdentity())
 {
-    t = mod(t, 1.f);
+    t = mod(t, 1.2f);
     Vec3 translation = node->getLocalTranslation();
     Vec3 rotation = node->getLocalRotation();
-    const AnimationCurveNode *channel1 = layer->getCurveNode(*node, "Lcl Translation");
+    const AnimationCurveNode *channel1 = layer->getCurveNode(*node, "Lcl Translationx");
     const AnimationCurveNode *channel2 = layer->getCurveNode(*node, "Lcl Rotation");
     if (channel1)
     {
@@ -136,58 +140,74 @@ void drawRestPose(btIDebugDraw *dd, float t, const AnimationLayer *layer,
 
     Matrix world = parentWorld * node->evalLocal(translation, rotation);
     btVector3 pos = btVector3( world.m[12], world.m[13], world.m[14] ) * .01;
+    btVector3 qos = btVector3( parentWorld.m[12], parentWorld.m[13], parentWorld.m[14] ) * .01;
+    dd->drawLine(qos, pos, {});
     const btVector3 halfExtend = btVector3(1,1,1) * 0.05;
     dd->drawAabb(pos-halfExtend, pos+halfExtend, {});
 
     for (int i=0; node->resolveObjectLink(i); i++)
     {
         const Object *child = node->resolveObjectLink(i);
-        if (child->isNode()) drawRestPose(dd, t, layer, child, world);
+        if (child->isNode()) drawPose(dd, t, layer, child, world);
     }
 }
 
-extern "C" void mainAnimation(vector<mat4> & I, btDynamicsWorld *dynamicsWorld, float t)
+extern "C" void mainAnimation(vector<char> & alloc, vector<mat4> & I,
+                              btDynamicsWorld *dynamicsWorld, float iTime, int iFrame)
 {
-    static GLuint frame = 0;
+    if (iFrame == 0)
+    {
+    }
+
     static const IScene *fbxScene = NULL;
+    static GLuint frame = 0;
     if (frame++ == 0)
     {
+        { // load font file
+            vector<int> fontData;
+            const char *filename = "../Data/arial.fnt";
+            FILE *file = fopen(filename, "r");
+            if (file)
+            {
+                fscanf(file, "%*[^\n]\n%*[^\n]\n%*[^\n]\n%*[^\n]\n");
+                while (1)
+                {
+                    long cur = ftell(file);
+                    int a,b,c,d,e,f,g,h;
+                    int eof = fscanf(file, "%*[^=]=%d%*[^=]=%d%*[^=]=%d%*[^=]=%d"
+                                           "%*[^=]=%d%*[^=]=%d%*[^=]=%d%*[^=]=%d",
+                        &a,&b,&c,&d,&e,&f,&g,&h);
+                    if (eof < 0) break;
+                    fseek(file, cur, SEEK_SET);
+                    fscanf(file, "%*[^\n]\n");
+
+                    fontData << a,b,c,d,e,f,g,h;
+                    // printf("%d\n", eof);
+                    // printf("%d %d %d %d %d %d %d %d\n", a,b,c,d,e,f,g,h);
+                }
+                fclose(file);
+                printf("INFO: loaded file %s\n", filename);
+            }
+        }
         {
-            const char *filename = "../Walking.fbx";
+            const char *filename = "../Standard Walk.fbx";
             FILE *f = fopen(filename, "rb");
             if (f)
             {
                 btClock stop;
                 stop.reset();
                 fseek(f, 0, SEEK_END);
-                long size = ftell(f);
+                long length = ftell(f);
                 rewind(f);
-                u8 data[size];
-                fread(data, 1, size, f);
-
-                fbxScene = load(data, size, 0);
-                for (int i=0; i<fbxScene->getAnimationStackCount(); i++)
-                {
-                    const AnimationStack *stack = fbxScene->getAnimationStack(i);
-                    const AnimationLayer *layer = stack->getLayer(0);
-                    for (int j=0; layer->getCurveNode(j); j++)
-                    {
-                        const AnimationCurveNode *node = layer->getCurveNode(j);
-                        const Object *limb = node->getBone();
-                        const AnimationCurveNode *node2 = layer->getCurveNode(*limb, "Lcl Translation");
-                        if (node2) printf("name : %s %d\n", node2->name, node2->getCurve(0)->getKeyCount());
-                    }
-                }
-
+                u8 data[length];
+                fread(data, 1, length, f);
+                fclose(f);
+                fbxScene = load(data, length, 0);
                 const char *err = getError();
                 if (strlen(err)) fprintf(stderr, "ERROR: %s\n", err);
-                fclose(f);
-                long long elapsedTime = stop.getTimeMilliseconds();
-                printf("elapsedTime : %d milliseconds\n", elapsedTime);
+                unsigned long long elapsedTime = stop.getTimeMilliseconds();
+                printf("INFO: loaded file %s. It took %ld milliseconds\n", filename, elapsedTime);
             }
-
-            // const btHashString keywords = "mixamorig:" "Hips" "Spine2" "Head"
-                // "RightShoulder" "RightHand" "RightUpLeg" "RightFoot";
         }
 
         { // clear dynamics world
@@ -292,14 +312,14 @@ extern "C" void mainAnimation(vector<mat4> & I, btDynamicsWorld *dynamicsWorld, 
     }
 
     static float lastFrameTime = 0;
-    float dt = t - lastFrameTime;
-    lastFrameTime = t;
+    float dt = iTime - lastFrameTime;
+    lastFrameTime = iTime;
     dynamicsWorld->stepSimulation(dt);
     btIDebugDraw *dd = dynamicsWorld->getDebugDrawer();
     dd->clearLines();
     dynamicsWorld->debugDrawWorld();
     dd->drawArc(btVector3(0,1,0), btVector3(0,1,0), btVector3(0,0,1), .5, .5, 0, M_PI*2, btVector3(1,1,0), false);
-    drawRestPose(dd, t, fbxScene->getAnimationStack(0)->getLayer(0), fbxScene->getRoot());
+    drawPose(dd, iTime, fbxScene->getAnimationStack(0)->getLayer(0), fbxScene->getRoot());
 
     // keyframe animation
     const int nJoints = sizeof restPose / sizeof *restPose;
@@ -314,6 +334,7 @@ extern "C" void mainAnimation(vector<mat4> & I, btDynamicsWorld *dynamicsWorld, 
         jointPos[c] = restPose[c] - restPose[p];
     }
 
+    float t = iTime;
     jointPos[0] = restPose[0] - vec3(0,.1*(sin(t)*.5+.5),0);
     for (int i : { 0, 1, 2, 3, 4, 5, 9, 13, 17 })
     {

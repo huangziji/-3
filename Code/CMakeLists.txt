@@ -12,7 +12,8 @@ find_package(glfw3 REQUIRED)
 find_package(glad  REQUIRED)
 find_package(glm   REQUIRED)
 
-add_executable(Ragdoll main.cpp base.frag base.glsl bvh.h)
+add_executable(Ragdoll main.cpp base.frag base.glsl bvh.h
+    text.glsl)
 target_link_libraries(Ragdoll glfw glad dl
     RagdollCommon
     BulletSoftBody
@@ -23,11 +24,12 @@ target_link_libraries(Ragdoll glfw glad dl
 )
 target_link_directories(Ragdoll PRIVATE
     ${CMAKE_PREFIX_PATH}/lib
-    ${CMAKE_BINARY_DIR}
     ${CMAKE_LIBRARY_PATH}
+    ${CMAKE_BINARY_DIR}
 )
 target_include_directories(Ragdoll PRIVATE
     ${CMAKE_INCLUDE_PATH}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../External/
 )
 add_library(RagdollCommon common.cpp common.h)
 target_include_directories(RagdollCommon PRIVATE
@@ -35,7 +37,7 @@ target_include_directories(RagdollCommon PRIVATE
 )
 target_compile_options(RagdollCommon PRIVATE -fPIC)
 
-add_library(RagdollPlugin SHARED plugin.cpp database.cpp rig.csv)
+add_library(RagdollPlugin SHARED plugin.cpp rig.csv)
 target_include_directories(RagdollPlugin PRIVATE
     ${CMAKE_PREFIX_PATH}/include
     ${CMAKE_INCLUDE_PATH}

@@ -7,10 +7,10 @@
 using namespace glm;
 
 /************************************************************
- *                     GL Utilities                         *
+ *                      Hotloading                          *
 ************************************************************/
 
-static int loadShader(int N, GLuint prog, const char *filename)
+static int loadShader_static(int N, GLuint prog, const char *filename)
 {
     FILE *f = fopen(filename, "r");
     if (!f)
@@ -76,13 +76,13 @@ static int loadShader(int N, GLuint prog, const char *filename)
     return 0;
 }
 
-bool reloadShader(int N, long *lastModTime, GLuint prog, const char *filename)
+static bool loadShader_dynamic(int N, long *lastModTime, GLuint prog, const char *filename)
 {
     struct stat libStat;
     int err = stat(filename, &libStat);
     if (err == 0 && *lastModTime != libStat.st_mtime)
     {
-        err = loadShader(N, prog, filename);
+        err = loadShader_static(N, prog, filename);
         if (err >= 0)
         {
             printf("INFO: reloading file %s\n", filename);
@@ -93,14 +93,14 @@ bool reloadShader(int N, long *lastModTime, GLuint prog, const char *filename)
     return false;
 }
 
-bool reloadShader1(long *lastModTime, GLuint prog, const char *filename)
+bool loadShader1(long *lastModTime, GLuint prog, const char *filename)
 {
-    return reloadShader(1, lastModTime, prog, filename);
+    return loadShader_dynamic(1, lastModTime, prog, filename);
 }
 
-bool reloadShader2(long *lastModTime, GLuint prog, const char *filename)
+bool loadShader2(long *lastModTime, GLuint prog, const char *filename)
 {
-    return reloadShader(2, lastModTime, prog, filename);
+    return loadShader_dynamic(2, lastModTime, prog, filename);
 }
 
 void *loadPlugin(const char * filename, const char *funcname)
@@ -136,7 +136,6 @@ void *loadPlugin(const char * filename, const char *funcname)
 bool recordVideo(float sec)
 {
     const int resX = 800, resY = 450;
-
     static const char cmd[] = "$HOME/.spotdl/ffmpeg"
             " -r 60 -f rawvideo -pix_fmt rgb24 -s 800x450"
             " -i pipe: -c:v libx264 -c:a aac"

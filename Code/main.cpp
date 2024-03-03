@@ -5,6 +5,8 @@
 #include <assert.h>
 #include <btBulletDynamicsCommon.h>
 template <typename T> using vector = btAlignedObjectArray<T>;
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
 
 class MyDebugDraw : public btIDebugDraw
 {
@@ -74,8 +76,26 @@ int main()
        // glfwSwapInterval(0);
     }
 
+
+    GLuint tex;
+    {
+        const char *filename = "../Data/arial.png";
+        int w, h, c;
+        stbi_uc *data = stbi_load(filename, &w, &h, &c, STBI_grey_alpha);
+        glGenTextures(1, &tex);
+        glBindTexture(GL_TEXTURE_2D, tex);
+        glTexStorage2D(GL_TEXTURE_2D, 1, GL_RG8, w,h);
+        glTexSubImage2D(GL_TEXTURE_2D, 0,0,0,w,h, GL_RG, GL_UNSIGNED_BYTE, data);
+        stbi_image_free(data);
+    }
+
+    long lastModTime3;
+    GLuint prog3 = glCreateProgram();
+
     while (!glfwWindowShouldClose(window1))
     {
+        loadShader2(&lastModTime3, prog3, "../Code/text.glsl");
+
         double xpos, ypos;
         float time = glfwGetTime();
         static uint32_t frame = -1;
@@ -94,13 +114,14 @@ int main()
         float ti = xpos / RES_X * M_PI * 2. - 1.;//time;
         btVector3 ta = btVector3(0,1,0);
         btVector3 ro = ta + btVector3(sin(ti),ypos/RES_Y * 3. - .5,cos(ti)).normalize() * 2.f;
-
         vector<btVector3> const& V = dd->_data;
+
+        static vector<char> alloc;
         {
             vector<btTransform> I;
             void *f = loadPlugin("libRagdollPlugin.so", "mainAnimation");
-            typedef void (plugin)(vector<btTransform> &, btDynamicsWorld*, float);
-            if (f) ((plugin*)f)(I, dynamicWorld, time);
+            typedef void (plugin)(vector<char> &, vector<btTransform> &, btDynamicsWorld*, float, int);
+            if (f) ((plugin*)f)(alloc, I, dynamicWorld, time, frame);
 
             static GLuint vbo, ubo1, ssbo1, frame = 0;
             if (frame++ == 0)
@@ -129,14 +150,14 @@ int main()
         {
             static int iCamera1, iCamera2;
             static long lastModTime1, lastModTime2;
-            bool dirty1 = reloadShader1(&lastModTime1, prog1, "../Code/base.frag");
+            bool dirty1 = loadShader1(&lastModTime1, prog1, "../Code/base.frag");
             if (dirty1)
             {
                 iCamera1 = glGetUniformLocation(prog1, "iCamera");
                 int iResolution = glGetUniformLocation(prog1, "iResolution");
                 glProgramUniform2f(prog1, iResolution, RES_X, RES_Y);
             }
-            bool dirty2 = reloadShader2(&lastModTime2, prog2, "../Code/base.glsl");
+            bool dirty2 = loadShader2(&lastModTime2, prog2, "../Code/base.glsl");
             if (dirty2)
             {
                 iCamera2 = glGetUniformLocation(prog2, "iCamera");
@@ -164,6 +185,11 @@ int main()
         glDisable(GL_DEPTH_TEST);
         glUseProgram(prog2);
         glDrawArrays(GL_LINES, 0, V.size());
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, tex);
+        glUseProgram(prog3);
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
         glfwSwapBuffers(window1);
         glfwPollEvents();
