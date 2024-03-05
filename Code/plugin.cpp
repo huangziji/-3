@@ -13,84 +13,6 @@ template <class T> vector<T> &operator<<(vector<T> &a, T const& b)
     return a;
 }
 
-const vec3 restPose[] = {
-    {0.00, 1.00, 0.00},
-    {0.00, 1.20, 0.00},
-    {0.00, 1.40, 0.00},
-    {0.00, 1.60, 0.00},
-    {0.00, 1.65, 0.00},
-    {0.00, 1.85, 0.00},
-    {0.10, 1.00, 0.00},
-    {0.10, 0.50, 0.00},
-    {0.10, 0.00, 0.00},
-    {0.10, 0.00, 0.15},
-    {0.15, 1.55, 0.00},
-    {0.38, 1.55, 0.00},
-    {0.60, 1.55, 0.00},
-    {0.70, 1.55, 0.00},
-    {-.10, 1.00, 0.00},
-    {-.10, 0.50, 0.00},
-    {-.10, 0.00, 0.00},
-    {-.10, 0.00, 0.15},
-    {-.15, 1.55, 0.00},
-    {-.38, 1.55, 0.00},
-    {-.60, 1.55, 0.00},
-    {-.70, 1.55, 0.00},
-};
-
-static const ivec2 skeletonMap[] = {
-    { 0, 1},
-    { 1, 2},
-    { 2, 3},
-    { 3, 4},
-    { 4, 5},
-    { 0, 6},
-    { 6, 7},
-    { 7, 8},
-    { 8, 9},
-    { 2,10},
-    {10,11},
-    {11,12},
-    {12,13},
-    { 0,14},
-    {14,15},
-    {15,16},
-    {16,17},
-    { 2,18},
-    {18,19},
-    {19,20},
-    {20,21},
-};
-
-typedef struct { int index1, index2; btVector3 halfExtend; }BodyPartData;
-static const BodyPartData bodyPartData[] = {
-     0, 1, {0.15, 0.10, 0.10},
-     1, 2, {0.11, 0.10, 0.08},
-     2, 3, {0.15, 0.10, 0.10},
-     3, 4, {0.04, 0.02, 0.04},
-     4, 5, {0.08, 0.10, 0.10},
-     6, 7, {0.05, 0.24, 0.05},
-     7, 8, {0.05, 0.24, 0.05},
-     8, 9, {0.05, 0.05, 0.08},
-    10,11, {0.12, 0.06, 0.06},
-    11,12, {0.10, 0.06, 0.06},
-    12,13, {0.06, 0.06, 0.06},
-    14,15, {0.05, 0.24, 0.05},
-    15,16, {0.05, 0.24, 0.05},
-    16,17, {0.05, 0.05, 0.08},
-    18,19, {0.12, 0.06, 0.06},
-    19,20, {0.10, 0.06, 0.06},
-    20,21, {0.06, 0.06, 0.06},
-};
-
-static const ivec2 jointMap[] = {
-    {0,1},{1,2},{2,3},{3,4},
-    {0,5},{5,6},{6,7},
-    {2,8},{8,9},{9,10},
-    {0,11},{11,12},{12,13},
-    {2,14},{14,15},{15,16},
-};
-
 mat3 rotationAlign( vec3 d, vec3 z );
 vec3 solve( vec3 p, float r1, float r2, vec3 dir );
 
@@ -105,10 +27,6 @@ mat3 rotateY(float a)
 #include <ofbx.h>
 using namespace ofbx;
 
-// const btHashString keywords = "mixamorig:" "Hips" "Spine2" "Head"
-    // "RightShoulder" "RightHand" "RightUpLeg" "RightFoot";
-
-
 Matrix makeIdentity()
 {
     dmat4 a(1);
@@ -121,13 +39,23 @@ Matrix operator*(Matrix a, Matrix b)
     return (Matrix&)c;
 }
 
+static unsigned int Keywords[] = {
+    btHashString("mixamorig:Hips").getHash(),
+    btHashString("mixamorig:Neck").getHash(),
+    btHashString("mixamorig:Head").getHash(),
+    btHashString("mixamorig:RightHand").getHash(),
+    btHashString("mixamorig:RightFoot").getHash(),
+    btHashString("mixamorig:LeftHand").getHash(),
+    btHashString("mixamorig:LeftFoot").getHash(),
+};
+
 void drawPose(btIDebugDraw *dd, float t, const AnimationLayer *layer,
                   const Object *node, Matrix parentWorld = makeIdentity())
 {
     t = mod(t, 1.2f);
     Vec3 translation = node->getLocalTranslation();
     Vec3 rotation = node->getLocalRotation();
-    const AnimationCurveNode *channel1 = layer->getCurveNode(*node, "Lcl Translationx");
+    const AnimationCurveNode *channel1 = layer->getCurveNode(*node, "Lcl Translation");
     const AnimationCurveNode *channel2 = layer->getCurveNode(*node, "Lcl Rotation");
     if (channel1)
     {
@@ -137,13 +65,18 @@ void drawPose(btIDebugDraw *dd, float t, const AnimationLayer *layer,
     {
         rotation = channel2->getNodeLocalTransform(t);
     }
-
     Matrix world = parentWorld * node->evalLocal(translation, rotation);
-    btVector3 pos = btVector3( world.m[12], world.m[13], world.m[14] ) * .01;
-    btVector3 qos = btVector3( parentWorld.m[12], parentWorld.m[13], parentWorld.m[14] ) * .01;
-    dd->drawLine(qos, pos, {});
-    const btVector3 halfExtend = btVector3(1,1,1) * 0.05;
-    dd->drawAabb(pos-halfExtend, pos+halfExtend, {});
+
+    vector<unsigned int> keywords;
+    keywords.initializeFromBuffer(Keywords, 11, 11);
+    keywords.quickSort(vector<unsigned int>::less());
+    int index = keywords.findBinarySearch(btHashString(node->name).getHash());
+    if (index != keywords.size())
+    {
+        btVector3 pos = btVector3( world.m[12], world.m[13], world.m[14] ) * .01;
+        const btVector3 halfExtend = btVector3(1,1,1) * 0.05;
+        dd->drawAabb(pos-halfExtend, pos+halfExtend, {});
+    }
 
     for (int i=0; node->resolveObjectLink(i); i++)
     {
@@ -152,19 +85,50 @@ void drawPose(btIDebugDraw *dd, float t, const AnimationLayer *layer,
     }
 }
 
-extern "C" void mainAnimation(vector<char> & alloc, vector<mat4> & I,
+void drawText( vector<float> & buffer, const vector<int> & map, const char *text)
+{
+    const int len = strlen(text);
+    float xpos = 0., ypos = .0;
+    const vec2 size = 24.f / (vec2(16,9)*50.f*512.f/8.0f);
+
+    for (int i=0; i<len; i++)
+    {
+        const char id = text[i];
+        int x = map[id*7+0];
+        int y = map[id*7+1];
+        int w = map[id*7+2];
+        int h = map[id*7+3];
+        int xoff = map[id*7+4];
+        int yoff = map[id*7+5];
+        int xadv = map[id*7+6];
+        if (id != ' ')
+        {
+            buffer << xpos+xoff*size.x, ypos+yoff*size.y, w*size.x, h*size.y,
+                float(x), float(y), float(w), float(h);
+        }
+        xpos += xadv*size.x*.75;
+    }
+}
+
+typedef struct { int index1, index2; btVector3 halfExtend; }BodyPartData;
+extern const BodyPartData bodyPartData[17];
+extern const vec3 restPose[22];
+extern const ivec2 skeletonMap[21];
+
+int  Physics_CreateRagdoll(btDynamicsWorld *);
+void Physics_ClearBodies(btDynamicsWorld *);
+
+extern "C" void mainAnimation(vector<mat4> & I, vector<float> & drawtext,
                               btDynamicsWorld *dynamicsWorld, float iTime, int iFrame)
 {
-    if (iFrame == 0)
-    {
-    }
-
+    static vector<int> fontData;
     static const IScene *fbxScene = NULL;
     static GLuint frame = 0;
     if (frame++ == 0)
     {
         { // load font file
-            vector<int> fontData;
+            int mn = 0xff, mx = 0;
+            fontData.resize(128*7, 0);
             const char *filename = "../Data/arial.fnt";
             FILE *file = fopen(filename, "r");
             if (file)
@@ -181,15 +145,22 @@ extern "C" void mainAnimation(vector<char> & alloc, vector<mat4> & I,
                     fseek(file, cur, SEEK_SET);
                     fscanf(file, "%*[^\n]\n");
 
-                    fontData << a,b,c,d,e,f,g,h;
-                    // printf("%d\n", eof);
-                    // printf("%d %d %d %d %d %d %d %d\n", a,b,c,d,e,f,g,h);
+                    fontData[a*7+0] = b;
+                    fontData[a*7+1] = c;
+                    fontData[a*7+2] = d;
+                    fontData[a*7+3] = e;
+                    fontData[a*7+4] = f;
+                    fontData[a*7+5] = g;
+                    fontData[a*7+6] = h;
+                    mn = min(mn, a);
+                    mx = max(mx, a);
                 }
                 fclose(file);
                 printf("INFO: loaded file %s\n", filename);
             }
         }
-        {
+
+        { // load fbx
             const char *filename = "../Standard Walk.fbx";
             FILE *f = fopen(filename, "rb");
             if (f)
@@ -210,28 +181,7 @@ extern "C" void mainAnimation(vector<char> & alloc, vector<mat4> & I,
             }
         }
 
-        { // clear dynamics world
-            for (int i = dynamicsWorld->getNumConstraints() - 1; i >= 0; i--)
-            {
-                btTypedConstraint *joint = dynamicsWorld->getConstraint(i);
-                dynamicsWorld->removeConstraint(joint);
-                delete joint;
-            }
-            for (int i = dynamicsWorld->getNumCollisionObjects() - 1; i >= 0; i--)
-            {
-                btCollisionObject *obj = dynamicsWorld->getCollisionObjectArray()[i];
-                btRigidBody *body = btRigidBody::upcast(obj);
-                if (body)
-                {
-                    if (body->getMotionState())
-                        delete body->getMotionState();
-                    if (body->getCollisionShape())
-                        delete body->getCollisionShape();
-                }
-                dynamicsWorld->removeCollisionObject(obj);
-                delete obj;
-            }
-        }
+        Physics_ClearBodies(dynamicsWorld);
 
         { // add a plane
             dynamicsWorld->setGravity(btVector3(0,-10,0));
@@ -243,73 +193,15 @@ extern "C" void mainAnimation(vector<char> & alloc, vector<mat4> & I,
             dynamicsWorld->addRigidBody(ground);
         }
 
-        // create colliders for character
-        int colliderId = dynamicsWorld->getNumCollisionObjects();
-        for (auto p : bodyPartData)
-        {
-            int i1 = p.index1, i2 = p.index2;
-            btVector3 h = p.halfExtend;
-            btVector3 a = btVector3(restPose[i1][0], restPose[i1][1], restPose[i1][2]);
-            btVector3 b = btVector3(restPose[i2][0], restPose[i2][1], restPose[i2][2]);
-            btVector3 c = (a + b) * .5;
-
-            btTransform pose;
-            pose.setIdentity();
-            pose.setOrigin(c);
-            btTransform dummy;
-            dummy.setIdentity();
-            btVector3 inertia;
-            btScalar  mass = h.x()*h.y()*h.z() * 300.;
-            btCollisionShape *shape = new btBoxShape(h);
-            shape->calculateLocalInertia(mass, inertia);
-            btRigidBody *rb = new btRigidBody(
-                btRigidBody::btRigidBodyConstructionInfo(
-                mass, new btDefaultMotionState( pose, dummy ), shape, inertia) );
-            dynamicsWorld->addRigidBody(rb);
-            rb->setDamping(.5, .5);
-            rb->setFriction(.5);
-            rb->setRestitution(.5);
+        {// apply force to ragdoll
+            const int colliderID = Physics_CreateRagdoll(dynamicsWorld);
+            btRigidBody::upcast(dynamicsWorld->getCollisionObjectArray()[3])
+                 ->applyCentralImpulse(btVector3(0,0,-10));
         }
-        for (ivec2 ij : jointMap)
-        {
-            int i = ij.x + colliderId;
-            int j = ij.y + colliderId;
-            int k = bodyPartData[ij.y].index1;
-            btVector3 a = btVector3(restPose[k][0], restPose[k][1], restPose[k][2]);
-            btRigidBody *rb1 = btRigidBody::upcast(dynamicsWorld->getCollisionObjectArray()[i]);
-            btRigidBody *rb2 = btRigidBody::upcast(dynamicsWorld->getCollisionObjectArray()[j]);
-            assert(rb1 && rb2);
-
-            btTransform localA, localB;
-            localA.setIdentity();
-            localB.setIdentity();
-            localA.setOrigin(a - rb1->getWorldTransform().getOrigin());
-            localB.setOrigin(a - rb2->getWorldTransform().getOrigin());
-            btGeneric6DofConstraint *joint = new btGeneric6DofConstraint(
-                        *rb1, *rb2, localA, localB, false);
-            dynamicsWorld->addConstraint(joint, true);
-            joint->setBreakingImpulseThreshold(0xffffffff);
-            joint->setLimit(0, 0, 0);
-            joint->setLimit(1, 0, 0);
-            joint->setLimit(2, 0, 0);
-            joint->setLimit(3, -M_PI_2, 0);
-            joint->setLimit(4, 0, M_PI * 2);
-            joint->setLimit(5, 0, M_PI * 2);
-            // joint->setEnabled(false);
-        }
-
-        // deactivate ragdoll
-        for (int i=colliderId; i<dynamicsWorld->getNumCollisionObjects(); i++)
-        {
-            btCollisionObject *obj = dynamicsWorld->getCollisionObjectArray()[i];
-            obj->forceActivationState(DISABLE_DEACTIVATION);
-            obj->setCollisionFlags(btCollisionObject::CF_KINEMATIC_OBJECT);
-        }
-
-        // apply force to ragdoll
-        btRigidBody::upcast(dynamicsWorld->getCollisionObjectArray()[3])
-            ->applyCentralImpulse(btVector3(0,0,-10));
     }
+
+    drawtext.clear();
+    drawText(drawtext, fontData, "Hello, World");
 
     static float lastFrameTime = 0;
     float dt = iTime - lastFrameTime;
@@ -318,52 +210,80 @@ extern "C" void mainAnimation(vector<char> & alloc, vector<mat4> & I,
     btIDebugDraw *dd = dynamicsWorld->getDebugDrawer();
     dd->clearLines();
     dynamicsWorld->debugDrawWorld();
-    dd->drawArc(btVector3(0,1,0), btVector3(0,1,0), btVector3(0,0,1), .5, .5, 0, M_PI*2, btVector3(1,1,0), false);
+    // dd->drawArc(btVector3(0,1,0), btVector3(0,1,0), btVector3(0,0,1), .5, .5, 0, M_PI*2, btVector3(1,1,0), false);
     drawPose(dd, iTime, fbxScene->getAnimationStack(0)->getLayer(0), fbxScene->getRoot());
 
     // keyframe animation
     const int nJoints = sizeof restPose / sizeof *restPose;
-    vector<vec3> jointPos;
-    vector<mat3> jointRot;
-    jointPos.resize(nJoints, vec3(0));
-    jointRot.resize(nJoints, mat3(1));
-
+    vec3 local[nJoints];
     for (ivec2 e : skeletonMap)
     {
         int p = e[0], c = e[1];
-        jointPos[c] = restPose[c] - restPose[p];
+        local[c] = restPose[c] - restPose[p];
     }
 
-    float t = iTime;
-    jointPos[0] = restPose[0] - vec3(0,.1*(sin(t)*.5+.5),0);
-    for (int i : { 0, 1, 2, 3, 4, 5, 9, 13, 17 })
+    enum {
+        HIPS = 0,
+        NECK = 3,
+        HEAD = 4,
+        FOOT_R = 8,
+        HAND_R = 12,
+        FOOT_L = 16,
+        HAND_L = 20,
+    };
+
+    vec3 jointPos[nJoints] = {};
+
+    { // channels
+        float t = iTime*1.5;
+        jointPos[NECK] = restPose[NECK] - vec3(0,.05*(sin(t)*.5+.5),0);
+        vec3 h = jointPos[HIPS] = restPose[HIPS];// - vec3(0,.1*(sin(t)*.5+.5),0);
+        jointPos[FOOT_R] = {  0.1,0.2,0 };
+        jointPos[FOOT_L] = { -0.1,0.2,0 };
+        jointPos[HAND_R] = {  0.3,1.2,0 };
+        jointPos[HAND_L] = { -0.3,1.2,0 };
+    }
+    { // solve
+        { // position constaints 1
+            jointPos[HIPS+1] = local[HIPS+1] + jointPos[HIPS];
+            jointPos[HEAD] = jointPos[NECK] + local[HEAD];
+            jointPos[HEAD+1] = jointPos[HEAD] + local[HEAD+1];
+        }
+        { // spine
+            vec3 o = jointPos[NECK-2];
+            vec3 p = jointPos[NECK];
+            float r1 = length(local[NECK-1]);
+            float r2 = length(local[NECK]);
+            vec3 x = o + solve(p-o, r1, r2, vec3(1,0,0));
+            jointPos[NECK-1] = x;
+        }
+        { // position constraints 2
+            jointPos[FOOT_R-2] = local[FOOT_R-2] + jointPos[HIPS];
+            jointPos[FOOT_L-2] = local[FOOT_L-2] + jointPos[HIPS];
+            jointPos[HAND_R-2] = local[HAND_R-2] + jointPos[NECK-1];
+            jointPos[HAND_L-2] = local[HAND_L-2] + jointPos[NECK-1];
+        }
+        // limbs
+        vec3 dir[] = { {1,0,0},{-1,0,0},{1,0,0},{-1,0,0} };
+        int i = 0;
+        for (int handle : { 8,12,16,20 })
+        {
+            vec3 o = jointPos[handle-2];
+            vec3 p = jointPos[handle];
+            float r1 = length(local[handle-1]);
+            float r2 = length(local[handle]);
+            vec3 x = o + solve(p - o, r1, r2, dir[i++]);
+            jointPos[handle-1] = x;
+
+            mat3 swi = rotationAlign( (p-x)/r2, local[handle]/r2 );
+            jointPos[handle+1] = p + local[handle+1] * swi;
+        }
+    }
+
+    if (0) for (vec3 p : jointPos)
     {
-        int c = skeletonMap[i][1];
-        int p = skeletonMap[i][0];
-        jointPos[c] = jointPos[p] + jointPos[c] * jointRot[p];
-        jointRot[c] *= jointRot[p];
+        dd->drawSphere(btVector3(p.x, p.y, p.z), .05f, {});
     }
-
-    vec3 target[] = { {.1,.2,0}, {.3,1.2,0}, {-.1,.2,0}, {-.3,1.2,0}, };
-    vec3 dir[] = { {1,0,0},{-1,0,0},{1,0,0},{-1,0,0} };
-    int jointIdx[] = { 8, 12, 16, 20 };
-    for (int i=0; i<4; i++)
-    {
-        int p = jointIdx[i];
-        int x = p - 1, o = p - 2;
-        vec3 local1 = jointPos[x];
-        vec3 local2 = jointPos[p];
-        float r1 = length(local1);
-        float r2 = length(local2);
-        jointPos[p] = target[i];
-        jointPos[x] = jointPos[o] + solve(jointPos[p]-jointPos[o], r1, r2, dir[i]);
-        jointRot[o] = rotationAlign( (jointPos[x]-jointPos[o])/r1, (local1)/r1 );
-        jointRot[x] = rotationAlign( (jointPos[p]-jointPos[x])/r2, (local2)/r2 );
-
-        jointRot[p] *= jointRot[x];
-        jointPos[p+1] = jointPos[p] + jointPos[p+1] * jointRot[p];
-    }
-
 
     I.clear();
     { // draw plane
@@ -373,13 +293,20 @@ extern "C" void mainAnimation(vector<char> & alloc, vector<mat4> & I,
         I.push_back(m);
     }
     for (auto data : bodyPartData)
-    { // draw character
-        mat4 m = transpose(jointRot[data.index1]);
-        vec3 c = (jointPos[data.index2] + jointPos[data.index1]) * .5f;
+    { // draw character colliders
 
-        m[3][0] = c.x;
-        m[3][1] = c.y;
-        m[3][2] = c.z;
+        int p = data.index1;
+        int c = data.index2;
+        float r = length(local[c]);
+        vec3 d = jointPos[c]-jointPos[p];
+        mat3 swi = rotationAlign(d/r, local[c]/r);
+
+        mat4 m = transpose(swi);
+        vec3 ce = (jointPos[data.index2] + jointPos[data.index1]) * .5f;
+
+        m[3][0] = ce.x;
+        m[3][1] = ce.y;
+        m[3][2] = ce.z;
         m[0][3] = data.halfExtend.x();
         m[1][3] = data.halfExtend.y();
         m[2][3] = data.halfExtend.z();

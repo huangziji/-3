@@ -1,4 +1,5 @@
 #include "common.h"
+
 #include <GLFW/glfw3.h>
 #include <glad/glad.h>
 #include <stdio.h>
@@ -8,7 +9,7 @@ template <typename T> using vector = btAlignedObjectArray<T>;
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
-class MyDebugDraw : public btIDebugDraw
+class myDebugDraw : public btIDebugDraw
 {
     int _debugMode;
 public:
@@ -34,6 +35,25 @@ public:
     }
 };
 
+GLuint loadTexture1(const char *filename)
+{
+    GLuint tex;
+    int w, h, c;
+    stbi_uc *data = stbi_load(filename, &w,&h,&c, STBI_grey_alpha);
+    if (!data)
+    {
+        fprintf(stderr, "ERROR: file %s not found.\n", filename);
+        return -1;
+    }
+
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glTexStorage2D(GL_TEXTURE_2D, 1, GL_RG8, w,h);
+    glTexSubImage2D(GL_TEXTURE_2D, 0,0,0,w,h, GL_RG, GL_UNSIGNED_BYTE, data);
+    stbi_image_free(data);
+    return tex;
+}
+
 static void error_callback(int _, const char* desc)
 {
     fprintf(stderr, "ERROR: %s\n", desc);
@@ -48,7 +68,7 @@ template <typename T> static vector<T> &operator<<(vector<T> &a, T b)
 
 int main()
 {
-    MyDebugDraw *dd = new MyDebugDraw;
+    myDebugDraw *dd = new myDebugDraw;
     btCollisionConfiguration *conf = new btDefaultCollisionConfiguration;
     btDynamicsWorld *dynamicWorld = new btDiscreteDynamicsWorld(
                 new btCollisionDispatcher(conf), new btDbvtBroadphase,
@@ -76,21 +96,9 @@ int main()
        // glfwSwapInterval(0);
     }
 
-
-    GLuint tex;
-    {
-        const char *filename = "../Data/arial.png";
-        int w, h, c;
-        stbi_uc *data = stbi_load(filename, &w, &h, &c, STBI_grey_alpha);
-        glGenTextures(1, &tex);
-        glBindTexture(GL_TEXTURE_2D, tex);
-        glTexStorage2D(GL_TEXTURE_2D, 1, GL_RG8, w,h);
-        glTexSubImage2D(GL_TEXTURE_2D, 0,0,0,w,h, GL_RG, GL_UNSIGNED_BYTE, data);
-        stbi_image_free(data);
-    }
-
     long lastModTime3;
     GLuint prog3 = glCreateProgram();
+    GLuint tex = loadTexture1("../Data/arial.png");
 
     while (!glfwWindowShouldClose(window1))
     {
@@ -114,27 +122,38 @@ int main()
         float ti = xpos / RES_X * M_PI * 2. - 1.;//time;
         btVector3 ta = btVector3(0,1,0);
         btVector3 ro = ta + btVector3(sin(ti),ypos/RES_Y * 3. - .5,cos(ti)).normalize() * 2.f;
-        vector<btVector3> const& V = dd->_data;
 
-        static vector<char> alloc;
+        vector<btVector3> const& V = dd->_data;
+        vector<float> U;
+
         {
             vector<btTransform> I;
             void *f = loadPlugin("libRagdollPlugin.so", "mainAnimation");
-            typedef void (plugin)(vector<char> &, vector<btTransform> &, btDynamicsWorld*, float, int);
-            if (f) ((plugin*)f)(alloc, I, dynamicWorld, time, frame);
+            typedef void (plugin)(vector<btTransform> &, vector<float> &, btDynamicsWorld*, float, int);
+            if (f) ((plugin*)f)(I, U, dynamicWorld, time, frame);
 
-            static GLuint vbo, ubo1, ssbo1, frame = 0;
+            static GLuint vbo1, vbo2, ubo1, ssbo1, frame = 0;
             if (frame++ == 0)
             {
-                glGenBuffers(1, &vbo);
+                glGenBuffers(1, &vbo1);
+                glGenBuffers(1, &vbo2);
                 glGenBuffers(1, &ubo1);
                 glGenBuffers(1, &ssbo1);
             }
 
-            glBindBuffer(GL_ARRAY_BUFFER, vbo);
+            glBindBuffer(GL_ARRAY_BUFFER, vbo1);
             glBufferData(GL_ARRAY_BUFFER, sizeof V[0] * V.size(), &V[0], GL_DYNAMIC_DRAW);
             glEnableVertexAttribArray(0);
             glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(btVector3), 0);
+
+            glBindBuffer(GL_ARRAY_BUFFER, vbo2);
+            glBufferData(GL_ARRAY_BUFFER, sizeof U[0] * U.size(), &U[0], GL_DYNAMIC_DRAW);
+            glEnableVertexAttribArray(1);
+            glEnableVertexAttribArray(2);
+            glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 32, 0);
+            glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, 32, (void*)16);
+            glVertexAttribDivisor(1, 1);
+            glVertexAttribDivisor(2, 1);
 
             uint data[] = { (uint)I.size() };
             glBindBuffer(GL_UNIFORM_BUFFER, ubo1);
@@ -189,7 +208,7 @@ int main()
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, tex);
         glUseProgram(prog3);
-        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, U.size()/6);
 
         glfwSwapBuffers(window1);
         glfwPollEvents();
