@@ -1,6 +1,5 @@
 #include <btBulletDynamicsCommon.h>
 #include <glm/glm.hpp>
-template <typename T> using myList = btAlignedObjectArray<T>;
 using namespace glm;
 
 extern const vec3 restPose[] = {
@@ -15,16 +14,16 @@ extern const vec3 restPose[] = {
     {0.10, 0.00, 0.00},
     {0.10, 0.00, 0.15},
     {0.15, 1.55, 0.00},
-    {0.38, 1.55, 0.00},
-    {0.60, 1.55, 0.00},
+    {0.40, 1.55, 0.00},
+    {0.65, 1.55, 0.00},
     {0.70, 1.55, 0.00},
     {-.10, 1.00, 0.00},
     {-.10, 0.50, 0.00},
     {-.10, 0.00, 0.00},
     {-.10, 0.00, 0.15},
     {-.15, 1.55, 0.00},
-    {-.38, 1.55, 0.00},
-    {-.60, 1.55, 0.00},
+    {-.40, 1.55, 0.00},
+    {-.65, 1.55, 0.00},
     {-.70, 1.55, 0.00},
 };
 
@@ -92,7 +91,7 @@ extern const ivec2 constraintData[] = {
     {15,16},
 };
 
-void Physics_ClearBodies(btDynamicsWorld *physics)
+void ClearBodies(btDynamicsWorld *physics)
 {
     for (int i = physics->getNumConstraints() - 1; i >= 0; i--)
     {
@@ -116,7 +115,7 @@ void Physics_ClearBodies(btDynamicsWorld *physics)
     }
 }
 
-int Physics_CreateRagdoll(btDynamicsWorld *dynamicsWorld)
+int CreateRagdoll(btDynamicsWorld *dynamicsWorld)
 {
     // create colliders for character
     int colliderId = dynamicsWorld->getNumCollisionObjects();

@@ -16,14 +16,6 @@ template <class T> vector<T> &operator<<(vector<T> &a, T const& b)
 mat3 rotationAlign( vec3 d, vec3 z );
 vec3 solve( vec3 p, float r1, float r2, vec3 dir );
 
-mat3 rotateY(float a)
-{
-    float c=cos(a), s=sin(a);
-    return mat3( c, 0, s,
-                 0, 1, 0,
-                -s, 0, c);
-}
-
 #include <ofbx.h>
 using namespace ofbx;
 
@@ -39,17 +31,22 @@ Matrix operator*(Matrix a, Matrix b)
     return (Matrix&)c;
 }
 
+float length(Vec3 a)
+{
+    return sqrt(a.x*a.x+a.y*a.y+a.z*a.z);
+}
+
 static unsigned int Keywords[] = {
     btHashString("mixamorig:Hips").getHash(),
     btHashString("mixamorig:Neck").getHash(),
     btHashString("mixamorig:Head").getHash(),
-    btHashString("mixamorig:RightHand").getHash(),
     btHashString("mixamorig:RightFoot").getHash(),
-    btHashString("mixamorig:LeftHand").getHash(),
+    btHashString("mixamorig:RightHand").getHash(),
     btHashString("mixamorig:LeftFoot").getHash(),
+    btHashString("mixamorig:LeftHand").getHash(),
 };
 
-void drawPose(btIDebugDraw *dd, float t, const AnimationLayer *layer,
+void GetPose( vector<vec3> & channels, float t, const AnimationLayer *layer,
                   const Object *node, Matrix parentWorld = makeIdentity())
 {
     t = mod(t, 1.2f);
@@ -68,120 +65,151 @@ void drawPose(btIDebugDraw *dd, float t, const AnimationLayer *layer,
     Matrix world = parentWorld * node->evalLocal(translation, rotation);
 
     vector<unsigned int> keywords;
-    keywords.initializeFromBuffer(Keywords, 11, 11);
+    keywords.initializeFromBuffer(Keywords, 7, 7);
     keywords.quickSort(vector<unsigned int>::less());
     int index = keywords.findBinarySearch(btHashString(node->name).getHash());
-    if (index != keywords.size())
+    if (index < keywords.size())
     {
-        btVector3 pos = btVector3( world.m[12], world.m[13], world.m[14] ) * .01;
-        const btVector3 halfExtend = btVector3(1,1,1) * 0.05;
-        dd->drawAabb(pos-halfExtend, pos+halfExtend, {});
+        float len = 0.;
+        len = 100;
+        // len += length(node->getLocalTranslation());
+        // len += length(node->getParent()->getParent()->getLocalTranslation());
+        btVector3 pos = btVector3( world.m[12], world.m[13], world.m[14] ) / len;
+        channels[index] = { pos.x(), pos.y(), pos.z() };
     }
 
     for (int i=0; node->resolveObjectLink(i); i++)
     {
         const Object *child = node->resolveObjectLink(i);
-        if (child->isNode()) drawPose(dd, t, layer, child, world);
+        if (child->isNode()) GetPose(channels, t, layer, child, world);
     }
 }
 
-void drawText( vector<float> & buffer, const vector<int> & map, const char *text)
+void draw2dText( vector<float> & buffer, const vector<int> & info, const char *text)
 {
     const int len = strlen(text);
-    float xpos = 0., ypos = .0;
-    const vec2 size = 24.f / (vec2(16,9)*50.f*512.f/8.0f);
+    float xpos = .1, ypos = .92;
+    float lineHei = 20.f / (9*50.f*512.f/8.0f);
+    float ar = 9./16.;
 
     for (int i=0; i<len; i++)
     {
         const char id = text[i];
-        int x = map[id*7+0];
-        int y = map[id*7+1];
-        int w = map[id*7+2];
-        int h = map[id*7+3];
-        int xoff = map[id*7+4];
-        int yoff = map[id*7+5];
-        int xadv = map[id*7+6];
-        if (id != ' ')
+        int x = info[id*7+0];
+        int y = info[id*7+1];
+        int w = info[id*7+2];
+        int h = info[id*7+3];
+        int xoff = info[id*7+4];
+        int yoff = info[id*7+5];
+        int xadv = info[id*7+6];
+
+        if (!isspace(id))
         {
-            buffer << xpos+xoff*size.x, ypos+yoff*size.y, w*size.x, h*size.y,
+            buffer << xpos+xoff*lineHei*ar, ypos+yoff*lineHei,
+                    w*lineHei*ar, h*lineHei,
                 float(x), float(y), float(w), float(h);
+            xpos += lineHei * ar * xadv *.75;
         }
-        xpos += xadv*size.x*.75;
+        else
+        {
+            xpos += lineHei * 25 * ((id == '\t') * 4 + 1);
+        }
     }
 }
+
+IScene *loadFbx(const char *filename)
+{
+    FILE *f = fopen(filename, "rb");
+    if (!f)
+    {
+        fprintf(stderr, "ERROR: file %s not found.\n", filename);
+        return NULL;
+    }
+
+    btClock stop;
+    stop.reset();
+
+    fseek(f, 0, SEEK_END);
+    long length = ftell(f);
+    rewind(f);
+    u8 data[length];
+    fread(data, 1, length, f);
+    fclose(f);
+
+    IScene *fbxScene = load(data, length, 0);
+    const char *err = getError();
+    if (strlen(err)) fprintf(stderr, "ERROR: %s\n", err);
+    unsigned long long elapsedTime = stop.getTimeMilliseconds();
+    printf("INFO: loaded file %s. It took %ld milliseconds\n", filename, elapsedTime);
+
+    return fbxScene;
+}
+
+vector<int> loadFnt(const char *filename)
+{
+    vector<int> fontdata;
+    fontdata.resize(128*7, 0);
+    FILE *file = fopen(filename, "r");
+    if (file)
+    {
+        fscanf(file, "%*[^\n]\n%*[^\n]\n%*[^\n]\n%*[^\n]\n");
+        for (;;)
+        {
+            long cur = ftell(file);
+            int a,b,c,d,e,f,g,h;
+            int eof = fscanf(file, "%*[^=]=%d%*[^=]=%d%*[^=]=%d%*[^=]=%d"
+                                   "%*[^=]=%d%*[^=]=%d%*[^=]=%d%*[^=]=%d",
+                &a,&b,&c,&d,&e,&f,&g,&h);
+            if (eof < 0) break;
+            fseek(file, cur, SEEK_SET);
+            fscanf(file, "%*[^\n]\n");
+
+            fontdata[a*7+0] = b;
+            fontdata[a*7+1] = c;
+            fontdata[a*7+2] = d;
+            fontdata[a*7+3] = e;
+            fontdata[a*7+4] = f;
+            fontdata[a*7+5] = g;
+            fontdata[a*7+6] = h;
+        }
+        fclose(file);
+        printf("INFO: loaded file %s\n", filename);
+    }
+    return fontdata;
+}
+
+
+template <typename T> using myList = btAlignedObjectArray<T>;
+typedef struct {
+    myList<float> meshBuffer;
+    myList<float> textBuffer;
+    myList<float> miscBuffer;
+}LibaryVarying;
 
 typedef struct { int index1, index2; btVector3 halfExtend; }BodyPartData;
 extern const BodyPartData bodyPartData[17];
 extern const vec3 restPose[22];
 extern const ivec2 skeletonMap[21];
 
-int  Physics_CreateRagdoll(btDynamicsWorld *);
-void Physics_ClearBodies(btDynamicsWorld *);
+int  CreateRagdoll(btDynamicsWorld *);
+void ClearBodies(btDynamicsWorld *);
 
-extern "C" void mainAnimation(vector<mat4> & I, vector<float> & drawtext,
-                              btDynamicsWorld *dynamicsWorld, float iTime, int iFrame)
+static vector<float> &operator<<(vector<float> &a, mat4 b)
 {
-    static vector<int> fontData;
-    static const IScene *fbxScene = NULL;
+    return a <<
+        b[0][0], b[0][1], b[0][2], b[0][3],
+        b[1][0], b[1][1], b[1][2], b[1][3],
+        b[2][0], b[2][1], b[2][2], b[2][3],
+        b[3][0], b[3][1], b[3][2], b[3][3];
+}
+
+extern "C" void mainAnimation(vector<float> & meshBuffer, vector<float> & textBuffer,
+                              btDynamicsWorld *dynamicsWorld, float iTime)
+{
     static GLuint frame = 0;
     if (frame++ == 0)
     {
-        { // load font file
-            int mn = 0xff, mx = 0;
-            fontData.resize(128*7, 0);
-            const char *filename = "../Data/arial.fnt";
-            FILE *file = fopen(filename, "r");
-            if (file)
-            {
-                fscanf(file, "%*[^\n]\n%*[^\n]\n%*[^\n]\n%*[^\n]\n");
-                while (1)
-                {
-                    long cur = ftell(file);
-                    int a,b,c,d,e,f,g,h;
-                    int eof = fscanf(file, "%*[^=]=%d%*[^=]=%d%*[^=]=%d%*[^=]=%d"
-                                           "%*[^=]=%d%*[^=]=%d%*[^=]=%d%*[^=]=%d",
-                        &a,&b,&c,&d,&e,&f,&g,&h);
-                    if (eof < 0) break;
-                    fseek(file, cur, SEEK_SET);
-                    fscanf(file, "%*[^\n]\n");
-
-                    fontData[a*7+0] = b;
-                    fontData[a*7+1] = c;
-                    fontData[a*7+2] = d;
-                    fontData[a*7+3] = e;
-                    fontData[a*7+4] = f;
-                    fontData[a*7+5] = g;
-                    fontData[a*7+6] = h;
-                    mn = min(mn, a);
-                    mx = max(mx, a);
-                }
-                fclose(file);
-                printf("INFO: loaded file %s\n", filename);
-            }
-        }
-
-        { // load fbx
-            const char *filename = "../Standard Walk.fbx";
-            FILE *f = fopen(filename, "rb");
-            if (f)
-            {
-                btClock stop;
-                stop.reset();
-                fseek(f, 0, SEEK_END);
-                long length = ftell(f);
-                rewind(f);
-                u8 data[length];
-                fread(data, 1, length, f);
-                fclose(f);
-                fbxScene = load(data, length, 0);
-                const char *err = getError();
-                if (strlen(err)) fprintf(stderr, "ERROR: %s\n", err);
-                unsigned long long elapsedTime = stop.getTimeMilliseconds();
-                printf("INFO: loaded file %s. It took %ld milliseconds\n", filename, elapsedTime);
-            }
-        }
-
-        Physics_ClearBodies(dynamicsWorld);
+        ClearBodies(dynamicsWorld);
 
         { // add a plane
             dynamicsWorld->setGravity(btVector3(0,-10,0));
@@ -194,14 +222,14 @@ extern "C" void mainAnimation(vector<mat4> & I, vector<float> & drawtext,
         }
 
         {// apply force to ragdoll
-            const int colliderID = Physics_CreateRagdoll(dynamicsWorld);
+            const int colliderID = CreateRagdoll(dynamicsWorld);
             btRigidBody::upcast(dynamicsWorld->getCollisionObjectArray()[3])
                  ->applyCentralImpulse(btVector3(0,0,-10));
         }
     }
 
-    drawtext.clear();
-    drawText(drawtext, fontData, "Hello, World");
+    static const IScene *fbxScene = loadFbx("../Data/Standard Walk.fbx");
+    static const vector<int> fontData = loadFnt("../Data/arial.fnt");
 
     static float lastFrameTime = 0;
     float dt = iTime - lastFrameTime;
@@ -211,7 +239,14 @@ extern "C" void mainAnimation(vector<mat4> & I, vector<float> & drawtext,
     dd->clearLines();
     dynamicsWorld->debugDrawWorld();
     // dd->drawArc(btVector3(0,1,0), btVector3(0,1,0), btVector3(0,0,1), .5, .5, 0, M_PI*2, btVector3(1,1,0), false);
-    drawPose(dd, iTime, fbxScene->getAnimationStack(0)->getLayer(0), fbxScene->getRoot());
+
+    static float fps = 0;
+    const ivec2 iResolution = ivec2(16, 9) * 50;
+    char text[32];
+    if ((frame & 0xf) == 0) fps = 1. / dt;
+    sprintf(text, "%.2f\t\t%.1f fps\t\t%d x %d", iTime, 1./dt, iResolution.x, iResolution.y);
+    textBuffer.clear();
+    draw2dText(textBuffer, fontData, text);
 
     // keyframe animation
     const int nJoints = sizeof restPose / sizeof *restPose;
@@ -234,28 +269,49 @@ extern "C" void mainAnimation(vector<mat4> & I, vector<float> & drawtext,
 
     vec3 jointPos[nJoints] = {};
 
-    { // channels
-        float t = iTime*1.5;
-        jointPos[NECK] = restPose[NECK] - vec3(0,.05*(sin(t)*.5+.5),0);
-        vec3 h = jointPos[HIPS] = restPose[HIPS];// - vec3(0,.1*(sin(t)*.5+.5),0);
-        jointPos[FOOT_R] = {  0.1,0.2,0 };
-        jointPos[FOOT_L] = { -0.1,0.2,0 };
-        jointPos[HAND_R] = {  0.3,1.2,0 };
-        jointPos[HAND_L] = { -0.3,1.2,0 };
+    vector<vec3> channels;
+    channels.resize(7);
+    GetPose(channels, iTime, fbxScene->getAnimationStack(0)->getLayer(0), fbxScene->getRoot());
+    // if (0)
+    {
+        jointPos[HIPS] = channels[4];// * length(local[HIPS]);
+        jointPos[NECK] = channels[1];// * length(local[NECK]);
+        jointPos[HEAD] = channels[3];// * length(local[HEAD]);
+        jointPos[FOOT_R] = channels[6];// * length(local[FOOT_R]);
+        jointPos[HAND_R] = channels[2];// * length(local[HAND_R]);
+        jointPos[FOOT_L] = channels[5];// * length(local[FOOT_L]);
+        jointPos[HAND_L] = channels[0];// * length(local[HAND_L]);
     }
+
     { // solve
         { // position constaints 1
-            jointPos[HIPS+1] = local[HIPS+1] + jointPos[HIPS];
             jointPos[HEAD] = jointPos[NECK] + local[HEAD];
             jointPos[HEAD+1] = jointPos[HEAD] + local[HEAD+1];
         }
-        { // spine
-            vec3 o = jointPos[NECK-2];
-            vec3 p = jointPos[NECK];
-            float r1 = length(local[NECK-1]);
-            float r2 = length(local[NECK]);
-            vec3 x = o + solve(p-o, r1, r2, vec3(1,0,0));
-            jointPos[NECK-1] = x;
+        { // 3 bone ik
+            jointPos[NECK-2] = jointPos[HIPS] + local[NECK-2];
+            // jointPos[NECK-1] = jointPos[NECK] - local[NECK-1];
+
+            {
+                int handle = NECK;
+                vec3 o = jointPos[handle-2];
+                vec3 p = jointPos[handle];
+                float r1 = length(local[handle-1]);
+                float r2 = length(local[handle]);
+                vec3 x = o + solve(p-o, r1, r2, vec3(1,0,0));
+                jointPos[NECK-1] = x;
+            }
+            {
+                int handle = NECK-1;
+                vec3 o = jointPos[handle-2];
+                vec3 p = jointPos[handle];
+                float r1 = length(local[handle-1]);
+                float r2 = length(local[handle]);
+                vec3 x = o + solve(p-o, r1, r2, vec3(1,0,0));
+                // jointPos[NECK-2] = x;
+            }
+
+            // jointPos[NECK-2] = x2;
         }
         { // position constraints 2
             jointPos[FOOT_R-2] = local[FOOT_R-2] + jointPos[HIPS];
@@ -280,17 +336,12 @@ extern "C" void mainAnimation(vector<mat4> & I, vector<float> & drawtext,
         }
     }
 
-    if (0) for (vec3 p : jointPos)
-    {
-        dd->drawSphere(btVector3(p.x, p.y, p.z), .05f, {});
-    }
-
-    I.clear();
+    meshBuffer.clear();
     { // draw plane
         mat4 m = mat4(1);
         m[0][3] = 0.05;
         m[3][3] = intBitsToFloat(-1);
-        I.push_back(m);
+        meshBuffer << m;
     }
     for (auto data : bodyPartData)
     { // draw character colliders
@@ -302,7 +353,7 @@ extern "C" void mainAnimation(vector<mat4> & I, vector<float> & drawtext,
         mat3 swi = rotationAlign(d/r, local[c]/r);
 
         mat4 m = transpose(swi);
-        vec3 ce = (jointPos[data.index2] + jointPos[data.index1]) * .5f;
+        vec3 ce = (jointPos[p] + jointPos[c]) * .5f;
 
         m[3][0] = ce.x;
         m[3][1] = ce.y;
@@ -311,6 +362,6 @@ extern "C" void mainAnimation(vector<mat4> & I, vector<float> & drawtext,
         m[1][3] = data.halfExtend.y();
         m[2][3] = data.halfExtend.z();
         m[3][3] = intBitsToFloat(0);
-        I.push_back(m);
+        meshBuffer << m;
     }
 }

@@ -1,4 +1,4 @@
-#version 300 es
+#version 320 es
 precision mediump float;
 
 mat3 setCamera(in vec3 ro, in vec3 ta, float cr)
@@ -21,8 +21,8 @@ mat4 projectionMatrix(float ar)
 
 #ifdef _VS
 layout (location = 0) in vec4 aVertex;
-uniform mat2x3 iCamera;
-uniform vec2 iResolution;
+layout (location = 0) uniform vec2 iResolution;
+layout (location = 1) uniform mat2x3 iCamera;
 void main()
 {
     vec3 ta = iCamera[0];

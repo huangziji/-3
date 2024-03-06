@@ -31,8 +31,8 @@ struct Hit
 
 Hit castRay(in vec3 ro, in vec3 rd);
 
-uniform mat2x3 iCamera;
-uniform vec2 iResolution;
+layout (location = 0) uniform vec2 iResolution;
+layout (location = 1) uniform mat2x3 iCamera;
 out vec4 fragColor;
 void main()
 {

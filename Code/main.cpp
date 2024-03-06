@@ -6,19 +6,19 @@
 #include <assert.h>
 #include <btBulletDynamicsCommon.h>
 template <typename T> using vector = btAlignedObjectArray<T>;
-#define STB_IMAGE_IMPLEMENTATION
-#include <stb_image.h>
+#include <miniaudio.h>
 
 class myDebugDraw : public btIDebugDraw
 {
     int _debugMode;
 public:
-    vector<btVector3> _data;
-    void clearLines() override final { _data.clear(); }
+    vector<btVector3> _lineBuffer;
+
+    void clearLines() override final { _lineBuffer.clear(); }
     void drawLine(const btVector3& from, const btVector3& to, const btVector3& color) override final
     {
-        _data.push_back(to);
-        _data.push_back(from);
+        _lineBuffer.push_back(to);
+        _lineBuffer.push_back(from);
     }
 
     void drawContactPoint(const btVector3& PointOnB, const btVector3& normalOnB, btScalar distance, int lifeTime, const btVector3& color) override final {}
@@ -35,39 +35,23 @@ public:
     }
 };
 
-GLuint loadTexture1(const char *filename)
-{
-    GLuint tex;
-    int w, h, c;
-    stbi_uc *data = stbi_load(filename, &w,&h,&c, STBI_grey_alpha);
-    if (!data)
-    {
-        fprintf(stderr, "ERROR: file %s not found.\n", filename);
-        return -1;
-    }
-
-    glGenTextures(1, &tex);
-    glBindTexture(GL_TEXTURE_2D, tex);
-    glTexStorage2D(GL_TEXTURE_2D, 1, GL_RG8, w,h);
-    glTexSubImage2D(GL_TEXTURE_2D, 0,0,0,w,h, GL_RG, GL_UNSIGNED_BYTE, data);
-    stbi_image_free(data);
-    return tex;
-}
-
 static void error_callback(int _, const char* desc)
 {
     fprintf(stderr, "ERROR: %s\n", desc);
 }
 
-template <typename T> static vector<T> &operator,(vector<T> &a, T b) { return a<<b; }
-template <typename T> static vector<T> &operator<<(vector<T> &a, T b)
-{
-    a.push_back(b);
-    return a;
-}
-
 int main()
 {
+    ma_result result;
+    ma_engine engine;
+
+    result = ma_engine_init(NULL, &engine);
+    if (result != MA_SUCCESS) {
+        return -1;
+    }
+
+    ma_engine_play_sound(&engine, "../Data/waterdrop24.wav", NULL);
+
     myDebugDraw *dd = new myDebugDraw;
     btCollisionConfiguration *conf = new btDefaultCollisionConfiguration;
     btDynamicsWorld *dynamicWorld = new btDiscreteDynamicsWorld(
@@ -105,32 +89,21 @@ int main()
         loadShader2(&lastModTime3, prog3, "../Code/text.glsl");
 
         double xpos, ypos;
+        glfwGetCursorPos(window1, &xpos, &ypos);
         float time = glfwGetTime();
-        static uint32_t frame = -1;
-        {
-            static float fps, lastFrameTime = 0;
-            float dt = time - lastFrameTime;
-            lastFrameTime = time;
-            if ((frame++ & 0xf) == 0) fps = 1./dt;
-            char title[32];
-            sprintf(title, "%.2f\t\t%.1f fps\t\t%d x %d", time, fps, RES_X, RES_Y);
-            glfwSetWindowTitle(window1, title);
-            glfwGetCursorPos(window1, &xpos, &ypos);
-            if (RES_X < xpos || xpos < 0 || RES_Y < ypos || ypos < 0) xpos = ypos = 0.;
-        }
 
         float ti = xpos / RES_X * M_PI * 2. - 1.;//time;
         btVector3 ta = btVector3(0,1,0);
         btVector3 ro = ta + btVector3(sin(ti),ypos/RES_Y * 3. - .5,cos(ti)).normalize() * 2.f;
 
-        vector<btVector3> const& V = dd->_data;
+        vector<btVector3> const& V = dd->_lineBuffer;
         vector<float> U;
+        vector<float> I;
 
         {
-            vector<btTransform> I;
             void *f = loadPlugin("libRagdollPlugin.so", "mainAnimation");
-            typedef void (plugin)(vector<btTransform> &, vector<float> &, btDynamicsWorld*, float, int);
-            if (f) ((plugin*)f)(I, U, dynamicWorld, time, frame);
+            typedef void (plugin)(vector<float> &, vector<float> &, btDynamicsWorld*, float);
+            if (f) ((plugin*)f)(I, U, dynamicWorld, time);
 
             static GLuint vbo1, vbo2, ubo1, ssbo1, frame = 0;
             if (frame++ == 0)
@@ -144,7 +117,7 @@ int main()
             glBindBuffer(GL_ARRAY_BUFFER, vbo1);
             glBufferData(GL_ARRAY_BUFFER, sizeof V[0] * V.size(), &V[0], GL_DYNAMIC_DRAW);
             glEnableVertexAttribArray(0);
-            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(btVector3), 0);
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 16, 0);
 
             glBindBuffer(GL_ARRAY_BUFFER, vbo2);
             glBufferData(GL_ARRAY_BUFFER, sizeof U[0] * U.size(), &U[0], GL_DYNAMIC_DRAW);
@@ -155,10 +128,11 @@ int main()
             glVertexAttribDivisor(1, 1);
             glVertexAttribDivisor(2, 1);
 
-            uint data[] = { (uint)I.size() };
+            int data[] = { (int)I.size()/16 };
             glBindBuffer(GL_UNIFORM_BUFFER, ubo1);
             glBufferData(GL_UNIFORM_BUFFER, sizeof data, data, GL_DYNAMIC_DRAW);
             glBindBufferBase(GL_UNIFORM_BUFFER, 0, ubo1);
+
             glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo1);
             glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof I[0] * I.size(), &I[0], GL_DYNAMIC_DRAW);
             glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssbo1);
@@ -167,25 +141,14 @@ int main()
         static GLuint prog1 = glCreateProgram();
         static GLuint prog2 = glCreateProgram();
         {
-            static int iCamera1, iCamera2;
             static long lastModTime1, lastModTime2;
-            bool dirty1 = loadShader1(&lastModTime1, prog1, "../Code/base.frag");
-            if (dirty1)
-            {
-                iCamera1 = glGetUniformLocation(prog1, "iCamera");
-                int iResolution = glGetUniformLocation(prog1, "iResolution");
-                glProgramUniform2f(prog1, iResolution, RES_X, RES_Y);
-            }
-            bool dirty2 = loadShader2(&lastModTime2, prog2, "../Code/base.glsl");
-            if (dirty2)
-            {
-                iCamera2 = glGetUniformLocation(prog2, "iCamera");
-                int iResolution = glGetUniformLocation(prog2, "iResolution");
-                glProgramUniform2f(prog2, iResolution, RES_X, RES_Y);
-            }
+            loadShader1(&lastModTime1, prog1, "../Code/base.frag");
+            loadShader2(&lastModTime2, prog2, "../Code/base.glsl");
             const float data[] = { ta.x(), ta.y(), ta.z(), ro.x(), ro.y(), ro.z() };
-            glProgramUniformMatrix2x3fv(prog1, iCamera1, 1, GL_FALSE, data);
-            glProgramUniformMatrix2x3fv(prog2, iCamera2, 1, GL_FALSE, data);
+            glProgramUniform2f(prog1, 0, RES_X, RES_Y);
+            glProgramUniform2f(prog2, 0, RES_X, RES_Y);
+            glProgramUniformMatrix2x3fv(prog1, 1, 1, GL_FALSE, data);
+            glProgramUniformMatrix2x3fv(prog2, 1, 1, GL_FALSE, data);
         }
 
         glDepthMask(1);
@@ -215,6 +178,7 @@ int main()
         // if (!recordVideo(5.39)) break;
     }
 
+    ma_engine_uninit(&engine);
     int err = glGetError();
     if (err) fprintf(stderr, "ERROR: %x\n", err);
     glfwDestroyWindow(window1);

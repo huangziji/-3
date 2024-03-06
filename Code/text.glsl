@@ -27,8 +27,8 @@ out vec4 fragColor;
 void main()
 {
     vec2 texSize = vec2(textureSize(iChannel0, 0));
-    float d = texture(iChannel0, UV / texSize).g;
-    float t = smoothstep(.5, .55, d);
+    float d = textureLod(iChannel0, UV / texSize, 1.).g;
+    float t = smoothstep(.4, .5, d);
     fragColor = vec4(vec3(1), t);
 }
 #endif

@@ -14,7 +14,7 @@ find_package(glm   REQUIRED)
 
 add_executable(Ragdoll main.cpp base.frag base.glsl bvh.h
     text.glsl)
-target_link_libraries(Ragdoll glfw glad dl
+target_link_libraries(Ragdoll glfw glad dl pthread
     RagdollCommon
     BulletSoftBody
     Bullet3Common
@@ -31,9 +31,11 @@ target_include_directories(Ragdoll PRIVATE
     ${CMAKE_INCLUDE_PATH}
     ${CMAKE_CURRENT_SOURCE_DIR}/../External/
 )
-add_library(RagdollCommon common.cpp common.h)
+add_library(RagdollCommon common.cpp common.h
+    miniaudio.cpp)
 target_include_directories(RagdollCommon PRIVATE
     ${CMAKE_PREFIX_PATH}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../External/
 )
 target_compile_options(RagdollCommon PRIVATE -fPIC)
 

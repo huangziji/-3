@@ -3,6 +3,8 @@
 #include <glad/glad.h>
 #include <sys/stat.h>
 #include <dlfcn.h>
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
 #include <glm/glm.hpp>
 using namespace glm;
 
@@ -101,6 +103,25 @@ bool loadShader1(long *lastModTime, GLuint prog, const char *filename)
 bool loadShader2(long *lastModTime, GLuint prog, const char *filename)
 {
     return loadShader_dynamic(2, lastModTime, prog, filename);
+}
+
+unsigned int loadTexture1(const char *filename)
+{
+    GLuint tex;
+    int w, h, c;
+    stbi_uc *data = stbi_load(filename, &w,&h,&c, STBI_grey_alpha);
+    if (!data)
+    {
+        fprintf(stderr, "ERROR: file %s not found.\n", filename);
+        return -1;
+    }
+
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glTexStorage2D(GL_TEXTURE_2D, 1, GL_RG8, w,h);
+    glTexSubImage2D(GL_TEXTURE_2D, 0,0,0,w,h, GL_RG, GL_UNSIGNED_BYTE, data);
+    stbi_image_free(data);
+    return tex;
 }
 
 void *loadPlugin(const char * filename, const char *funcname)

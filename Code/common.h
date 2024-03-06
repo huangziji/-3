@@ -5,6 +5,8 @@ bool loadShader1(long *, unsigned int, const char *);
 
 bool loadShader2(long *, unsigned int, const char *);
 
+unsigned int loadTexture1(const char *filename);
+
 void *loadPlugin(const char *, const char *);
 
 bool recordVideo(float sec);
