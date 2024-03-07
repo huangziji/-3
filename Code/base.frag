@@ -32,12 +32,12 @@ struct Hit
 Hit castRay(in vec3 ro, in vec3 rd);
 
 layout (location = 0) uniform vec2 iResolution;
-layout (location = 1) uniform mat2x3 iCamera;
+layout (std140, binding = 0) uniform VIEW { vec4 iRayTar, iRayOri; };
 out vec4 fragColor;
 void main()
 {
-    vec3 ta = iCamera[0];
-    vec3 ro = iCamera[1];
+    vec3 ta = iRayTar.xyz;
+    vec3 ro = iRayOri.xyz;
 
     vec2 uv = (2.0*gl_FragCoord.xy-iResolution.xy) / iResolution.y;
     mat3 ca = setCamera(ro, ta, 0.0);
@@ -76,10 +76,7 @@ void main()
     gl_FragDepth = (ndc*gl_DepthRange.diff + gl_DepthRange.near + gl_DepthRange.far) / 2.0;
 }
 
-layout (std140, binding = 0) uniform U0 {
-    int instanceCount;
-};
-
+layout (location = 5) uniform int instanceCount;
 layout (std430, binding = 0) buffer IN_0 { mat4 matrix[]; };
 
 vec4 plaIntersect( in vec3 ro, in vec3 rd, in vec4 p );

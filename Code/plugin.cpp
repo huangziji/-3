@@ -6,12 +6,12 @@
 using namespace glm;
 #include <btBulletDynamicsCommon.h>
 template <typename T> using vector = btAlignedObjectArray<T>;
-template <class T> vector<T> &operator,(vector<T> &a, T const& b) { return a << b; }
-template <class T> vector<T> &operator<<(vector<T> &a, T const& b)
+static vector<float> &operator<<(vector<float> &a, float b)
 {
     a.push_back(b);
     return a;
 }
+static vector<float> &operator,(vector<float> &a, float b) { return a << b; }
 
 mat3 rotationAlign( vec3 d, vec3 z );
 vec3 solve( vec3 p, float r1, float r2, vec3 dir );
@@ -117,34 +117,6 @@ void draw2dText( vector<float> & buffer, const vector<int> & info, const char *t
     }
 }
 
-IScene *loadFbx(const char *filename)
-{
-    FILE *f = fopen(filename, "rb");
-    if (!f)
-    {
-        fprintf(stderr, "ERROR: file %s not found.\n", filename);
-        return NULL;
-    }
-
-    btClock stop;
-    stop.reset();
-
-    fseek(f, 0, SEEK_END);
-    long length = ftell(f);
-    rewind(f);
-    u8 data[length];
-    fread(data, 1, length, f);
-    fclose(f);
-
-    IScene *fbxScene = load(data, length, 0);
-    const char *err = getError();
-    if (strlen(err)) fprintf(stderr, "ERROR: %s\n", err);
-    unsigned long long elapsedTime = stop.getTimeMilliseconds();
-    printf("INFO: loaded file %s. It took %ld milliseconds\n", filename, elapsedTime);
-
-    return fbxScene;
-}
-
 vector<int> loadFnt(const char *filename)
 {
     vector<int> fontdata;
@@ -178,21 +150,33 @@ vector<int> loadFnt(const char *filename)
     return fontdata;
 }
 
+IScene *loadFbx(const char *filename)
+{
+    FILE *f = fopen(filename, "rb");
+    if (!f)
+    {
+        fprintf(stderr, "ERROR: file %s not found.\n", filename);
+        return NULL;
+    }
 
-template <typename T> using myList = btAlignedObjectArray<T>;
-typedef struct {
-    myList<float> meshBuffer;
-    myList<float> textBuffer;
-    myList<float> miscBuffer;
-}LibaryVarying;
+    btClock stop;
+    stop.reset();
 
-typedef struct { int index1, index2; btVector3 halfExtend; }BodyPartData;
-extern const BodyPartData bodyPartData[17];
-extern const vec3 restPose[22];
-extern const ivec2 skeletonMap[21];
+    fseek(f, 0, SEEK_END);
+    long length = ftell(f);
+    rewind(f);
+    u8 data[length];
+    fread(data, 1, length, f);
+    fclose(f);
 
-int  CreateRagdoll(btDynamicsWorld *);
-void ClearBodies(btDynamicsWorld *);
+    IScene *fbxScene = load(data, length, 0);
+    const char *err = getError();
+    if (strlen(err)) fprintf(stderr, "ERROR: %s\n", err);
+    unsigned long long elapsedTime = stop.getTimeMilliseconds();
+    printf("INFO: loaded file %s. It took %ld milliseconds\n", filename, elapsedTime);
+
+    return fbxScene;
+}
 
 static vector<float> &operator<<(vector<float> &a, mat4 b)
 {
@@ -203,8 +187,19 @@ static vector<float> &operator<<(vector<float> &a, mat4 b)
         b[3][0], b[3][1], b[3][2], b[3][3];
 }
 
-extern "C" void mainAnimation(vector<float> & meshBuffer, vector<float> & textBuffer,
-                              btDynamicsWorld *dynamicsWorld, float iTime)
+typedef struct { int index1, index2; btVector3 halfExtend; }BodyPartData;
+extern const BodyPartData bodyPartData[17];
+extern const vec3 restPose[22];
+extern const ivec2 skeletonMap[21];
+int  CreateRagdoll(btDynamicsWorld *);
+void ClearBodies(btDynamicsWorld *);
+
+template <typename T> using myList = btAlignedObjectArray<T>;
+typedef struct { myList<float> viewBuffer, meshBuffer, textBuffer; }Varying;
+
+extern "C" Varying mainAnimation(btDynamicsWorld *dynamicsWorld,
+            ivec2 iResolution, float iTime, float iTimeDelta, float iFrame, ivec4 iMouse
+                                 )
 {
     static GLuint frame = 0;
     if (frame++ == 0)
@@ -228,25 +223,30 @@ extern "C" void mainAnimation(vector<float> & meshBuffer, vector<float> & textBu
         }
     }
 
-    static const IScene *fbxScene = loadFbx("../Data/Standard Walk.fbx");
-    static const vector<int> fontData = loadFnt("../Data/arial.fnt");
+    myList<float> viewBuffer;
+    myList<float> meshBuffer;
+    myList<float> textBuffer;
 
-    static float lastFrameTime = 0;
-    float dt = iTime - lastFrameTime;
-    lastFrameTime = iTime;
-    dynamicsWorld->stepSimulation(dt);
+    float ti = iTime;
+    vec3 ta = vec3(0,1,0);
+    vec3 ro = ta + vec3(sin(ti),.3,cos(ti)) * 2.f;
+    viewBuffer << ta.x, ta.y, ta.z, 0, ro.x, ro.y, ro.z, 0;
+
+    static const IScene *fbxScene = loadFbx("../Data/Standard Walk.fbx");
+    static const vector<int> fontinfo = loadFnt("../Data/arial.fnt");
+
+    dynamicsWorld->stepSimulation(iTimeDelta);
     btIDebugDraw *dd = dynamicsWorld->getDebugDrawer();
     dd->clearLines();
     dynamicsWorld->debugDrawWorld();
     // dd->drawArc(btVector3(0,1,0), btVector3(0,1,0), btVector3(0,0,1), .5, .5, 0, M_PI*2, btVector3(1,1,0), false);
 
     static float fps = 0;
-    const ivec2 iResolution = ivec2(16, 9) * 50;
+    if ((frame & 0xf) == 0) fps = 1. / iTimeDelta;
     char text[32];
-    if ((frame & 0xf) == 0) fps = 1. / dt;
-    sprintf(text, "%.2f\t\t%.1f fps\t\t%d x %d", iTime, 1./dt, iResolution.x, iResolution.y);
+    sprintf(text, "%.2f\t\t%.1f fps\t\t%d x %d", iTime, fps, iResolution.x, iResolution.y);
     textBuffer.clear();
-    draw2dText(textBuffer, fontData, text);
+    draw2dText(textBuffer, fontinfo, text);
 
     // keyframe animation
     const int nJoints = sizeof restPose / sizeof *restPose;
@@ -345,7 +345,6 @@ extern "C" void mainAnimation(vector<float> & meshBuffer, vector<float> & textBu
     }
     for (auto data : bodyPartData)
     { // draw character colliders
-
         int p = data.index1;
         int c = data.index2;
         float r = length(local[c]);
@@ -364,4 +363,6 @@ extern "C" void mainAnimation(vector<float> & meshBuffer, vector<float> & textBu
         m[3][3] = intBitsToFloat(0);
         meshBuffer << m;
     }
+
+    return { viewBuffer, meshBuffer, textBuffer };
 }

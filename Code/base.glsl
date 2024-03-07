@@ -19,14 +19,15 @@ mat4 projectionMatrix(float ar)
     return mat4( fov/ar, 0,0,0,0, fov, 0,0,0,0, p1,1,0,0,p2,0 );
 }
 
+layout (location = 0) uniform vec2 iResolution;
+layout (std140, binding = 0) uniform VIEW { vec4 iRayTar, iRayOri; };
+
 #ifdef _VS
 layout (location = 0) in vec4 aVertex;
-layout (location = 0) uniform vec2 iResolution;
-layout (location = 1) uniform mat2x3 iCamera;
 void main()
 {
-    vec3 ta = iCamera[0];
-    vec3 ro = iCamera[1];
+    vec3 ta = iRayTar.xyz;
+    vec3 ro = iRayOri.xyz;
     mat3 ca = setCamera(ro, ta, 0.0);
 
     float ar = iResolution.x/iResolution.y;
