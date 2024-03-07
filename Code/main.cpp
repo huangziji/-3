@@ -4,44 +4,8 @@
 #include <glad/glad.h>
 #include <stdio.h>
 #include <assert.h>
-#include <btBulletDynamicsCommon.h>
-template <typename T> using myList = btAlignedObjectArray<T>;
 #include <miniaudio.h>
-
-static myList<float> &operator<<(myList<float> &a, float b)
-{
-    a.push_back(b);
-    return a;
-}
-static myList<float> &operator,(myList<float> &a, float b) { return a << b; }
-
-class myDebugDraw : public btIDebugDraw
-{
-    int _debugMode;
-public:
-    myList<float> _lineBuffer;
-
-    void clearLines() override final { _lineBuffer.clear(); }
-    void drawLine(const btVector3& from, const btVector3& to, const btVector3& color) override final
-    {
-        _lineBuffer <<
-                from.x(), from.y(), from.z(), 0,
-                to.x(), to.y(), to.z(), 0;
-    }
-
-    void drawContactPoint(const btVector3& PointOnB, const btVector3& normalOnB, btScalar distance, int lifeTime, const btVector3& color) override final {}
-    void reportErrorWarning(const char* warningString) override final
-    {
-        fprintf(stderr, "ERROR: %s\n", warningString);
-    }
-    void draw3dText(const btVector3& location, const char* textString)  override final {}
-    void setDebugMode(int debugMode)  override final { _debugMode = debugMode; }
-
-    virtual int getDebugMode() const override final
-    {
-        return DBG_DrawConstraints;//|DBG_DrawWireframe;
-    }
-};
+#include <btBulletDynamicsCommon.h>
 
 static void error_callback(int _, const char* desc)
 {
@@ -93,24 +57,26 @@ int main()
         typedef struct { int x,y; } ivec2;
         typedef struct { int x,y,z,w; } ivec4;
 
-        const float iTime = glfwGetTime();
-        static int iFrame = -1;
-
         ivec2 iResolution;
-        double posX, posY;
-        glfwGetWindowSize(window1, &iResolution.x, &iResolution.y);
-        glfwGetCursorPos(window1, &posX, &posY);
-        static float lastFrameTime = 0;
-        const float iTimeDelta = iTime - lastFrameTime;
-        lastFrameTime = iTime;
-        iFrame += 1;
+        const float iTime = glfwGetTime();
+        float iTimeDelta;
+        static int iFrame = -1;
+        ivec4 iMouse;
+        {
+            glfwGetWindowSize(window1, &iResolution.x, &iResolution.y);
+            static float lastFrameTime = 0;
+            iTimeDelta = iTime - lastFrameTime;
+            lastFrameTime = iTime;
+            iFrame += 1;
+            double posX, posY;
+            glfwGetCursorPos(window1, &posX, &posY);
+            iMouse.x = posX, iMouse.y = posY;
+        }
 
-        ivec4 iMouse = { (int)posX, (int)posY };
 
         typedef struct { myList<float> viewBuffer, meshBuffer, textBuffer; }Varying;
         typedef Varying (plugin)(btDynamicsWorld*,
-            ivec2 iResolution, float iTime, float iTimeDelta, float iFrame, ivec4 iMouse
-                                 );
+            ivec2 iResolution, float iTime, float iTimeDelta, float iFrame, ivec4 iMouse);
 
         void *f = loadPlugin("libRagdollPlugin.so", "mainAnimation");
         const Varying res = f ? ((plugin*)f)(dynamicWorld, iResolution, iTime, iTimeDelta, 0, iMouse) : Varying{};
@@ -172,6 +138,7 @@ int main()
             loadShader2(&lastModTime3, prog3, "../Code/text.glsl");
             glProgramUniform2f(prog1, 0, iResolution.x, iResolution.y);
             glProgramUniform2f(prog2, 0, iResolution.x, iResolution.y);
+            glProgramUniform2f(prog3, 0, iResolution.x, iResolution.y);
             glProgramUniform1i(prog1, 5, nMeshes);
         }
 
@@ -196,7 +163,7 @@ int main()
 
         glfwSwapBuffers(window1);
         glfwPollEvents();
-        // if (!recordVideo(5.39)) break;
+        // if (!recordVideo(5 / iTimeDelta)) break;
     }
 
     ma_engine_uninit(&engine);

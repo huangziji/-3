@@ -7,6 +7,8 @@
 #include <stb_image.h>
 #include <glm/glm.hpp>
 using namespace glm;
+#include <LinearMath/btAlignedObjectArray.h>
+template <typename T> using myList = btAlignedObjectArray<T>;
 
 /************************************************************
  *                      Hotloading                          *
@@ -124,6 +126,38 @@ unsigned int loadTexture1(const char *filename)
     return tex;
 }
 
+bool recordVideo(int nFrame)
+{
+    static const char fmt[] = "$HOME/.spotdl/ffmpeg"
+            " -r 60 -f rawvideo -pix_fmt rgb24 -s %dx%d"
+            " -i pipe: -c:v libx264 -c:a aac"
+            " -preset fast -y -pix_fmt yuv420p -crf 21 -vf vflip 1.mp4";
+
+    int vp[4];
+    glGetIntegerv(GL_VIEWPORT, vp);
+    const int resX = vp[2] - vp[0];
+    const int resY = vp[3] - vp[1];
+
+    static char *cmd = new char[strlen(fmt) + 16];
+    sprintf(cmd, fmt, resX, resY);
+    static FILE *pipe = popen(cmd, "w");
+    static int frame = 0;
+    static char *buffer = new char[resX*resY*3];
+
+    glReadPixels(0, 0, resX, resY, GL_RGB, GL_UNSIGNED_BYTE, buffer);
+    fwrite(buffer, resX*resY*3, 1, pipe);
+    if (frame++ > nFrame)
+    {
+        pclose(pipe);
+        return false;
+    }
+    return true;
+}
+
+/************************************************************
+ *                        System                            *
+************************************************************/
+
 void *loadPlugin(const char * filename, const char *funcname)
 {
     static long lastModTime;
@@ -154,26 +188,37 @@ void *loadPlugin(const char * filename, const char *funcname)
     return f;
 }
 
-bool recordVideo(float sec)
+myList<int> loadFnt(const char *filename)
 {
-    const int resX = 800, resY = 450;
-    static const char cmd[] = "$HOME/.spotdl/ffmpeg"
-            " -r 60 -f rawvideo -pix_fmt rgb24 -s 800x450"
-            " -i pipe: -c:v libx264 -c:a aac"
-            " -preset fast -y -pix_fmt yuv420p -crf 21 -vf vflip 1.mp4";
-
-    static FILE *pipe = popen(cmd, "w");
-    static char *buffer = new char[resX*resY*3];
-    static int frame = 0;
-
-    glReadPixels(0,0, resX, resY, GL_RGB, GL_UNSIGNED_BYTE, buffer);
-    fwrite(buffer, resX*resY*3, 1, pipe);
-    if (frame++ > sec*60)
+    myList<int> fontinfo;
+    fontinfo.resize(128*7, 0);
+    FILE *file = fopen(filename, "r");
+    if (file)
     {
-        pclose(pipe);
-        return false;
+        fscanf(file, "%*[^\n]\n%*[^\n]\n%*[^\n]\n%*[^\n]\n");
+        for (;;)
+        {
+            long cur = ftell(file);
+            int a,b,c,d,e,f,g,h;
+            int eof = fscanf(file, "%*[^=]=%d%*[^=]=%d%*[^=]=%d%*[^=]=%d"
+                                   "%*[^=]=%d%*[^=]=%d%*[^=]=%d%*[^=]=%d",
+                &a,&b,&c,&d,&e,&f,&g,&h);
+            if (eof < 0) break;
+            fseek(file, cur, SEEK_SET);
+            fscanf(file, "%*[^\n]\n");
+
+            fontinfo[a*7+0] = b;
+            fontinfo[a*7+1] = c;
+            fontinfo[a*7+2] = d;
+            fontinfo[a*7+3] = e;
+            fontinfo[a*7+4] = f;
+            fontinfo[a*7+5] = g;
+            fontinfo[a*7+6] = h;
+        }
+        fclose(file);
+        printf("INFO: loaded file %s\n", filename);
     }
-    return true;
+    return fontinfo;
 }
 
 /************************************************************

@@ -1,4 +1,4 @@
-#version 300 es
+#version 320 es
 precision mediump float;
 
 #ifdef _VS
@@ -8,26 +8,30 @@ precision mediump float;
 #endif
 
 _varying vec2 UV;
-uniform sampler2D iChannel0;
+layout (location = 0) uniform vec2 iResolution;
+layout (binding  = 0) uniform sampler2D iChannel0;
 
 #ifdef _VS
-layout (location = 1) in vec4 aPosition;
-layout (location = 2) in vec4 aTexCoord;
+layout (location = 1) in vec4 aDst;
+layout (location = 2) in vec4 aSrc;
 void main()
 {
-    UV = vec2(gl_VertexID&1, gl_VertexID/2).yx;
-    vec2 vertex = aPosition.xy + aPosition.zw * UV;
-    UV = aTexCoord.xy + aTexCoord.zw * UV;
+    vec2 texSize = vec2(textureSize(iChannel0, 0));
+    float ar = iResolution.y / iResolution.x;
 
-    // screen space to ndc
+    UV = vec2(gl_VertexID&1, gl_VertexID/2).yx;
+    vec2 vertex = aDst.xy + aDst.zw * UV * vec2(ar, 1);
+    UV = aSrc.xy + aSrc.zw * UV;
+    UV /= texSize;
+
+    // vflip
     gl_Position = vec4(vertex.x * 2. - 1., 1. - vertex.y * 2., 0, 1);
 }
 #else
 out vec4 fragColor;
 void main()
 {
-    vec2 texSize = vec2(textureSize(iChannel0, 0));
-    float d = textureLod(iChannel0, UV / texSize, 1.).g;
+    float d = textureLod(iChannel0, UV, 1.).g;
     float t = smoothstep(.4, .5, d);
     fragColor = vec4(vec3(1), t);
 }

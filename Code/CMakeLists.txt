@@ -35,12 +35,13 @@ add_library(RagdollCommon common.cpp common.h
     miniaudio.cpp)
 target_include_directories(RagdollCommon PRIVATE
     ${CMAKE_PREFIX_PATH}/include
+    ${CMAKE_INCLUDE_PATH}
     ${CMAKE_CURRENT_SOURCE_DIR}/../External/
 )
 target_compile_options(RagdollCommon PRIVATE -fPIC)
 
 add_library(RagdollPlugin SHARED plugin.cpp rig.csv
-    Anim.cpp)
+    Anim.cpp Database.cpp)
 target_include_directories(RagdollPlugin PRIVATE
     ${CMAKE_PREFIX_PATH}/include
     ${CMAKE_INCLUDE_PATH}
