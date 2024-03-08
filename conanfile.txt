@@ -2,7 +2,7 @@
 bullet3/3.25
 recastnavigation/cci.20200511
 openfbx/cci.20210426
-openal/1.22.2
+easy_profiler/2.1.0
 
 [generators]
 CMakeDeps

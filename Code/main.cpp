@@ -24,7 +24,7 @@ int main()
 
     ma_engine_play_sound(&engine, "../Data/waterdrop24.wav", NULL);
 
-    myDebugDraw *dd = new myDebugDraw;
+    myDebugDraw *dd = new myDebugDraw("../Data/arial.fnt");
     btCollisionConfiguration *conf = new btDefaultCollisionConfiguration;
     btDynamicsWorld *dynamicWorld = new btDiscreteDynamicsWorld(
                 new btCollisionDispatcher(conf), new btDbvtBroadphase,
@@ -52,6 +52,20 @@ int main()
         glfwSetWindowAttrib(window1, GLFW_FLOATING, GLFW_TRUE);
     }
 
+    GLuint bufferA, tex5;
+    const int Size = 512;
+    {
+        glGenTextures(1, &tex5);
+        glBindTexture(GL_TEXTURE_2D, tex5);
+        glTexStorage2D(GL_TEXTURE_2D, 1, GL_R8, Size, Size);
+        glGenFramebuffers(1, &bufferA);
+        glBindFramebuffer(GL_FRAMEBUFFER, bufferA);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex5, 0);
+        glDrawBuffer(GL_COLOR_ATTACHMENT0);
+    }
+
+    const GLuint tex4 = loadTexture1("../Data/arial.bmp");
+
     while (!glfwWindowShouldClose(window1))
     {
         typedef struct { int x,y; } ivec2;
@@ -73,16 +87,29 @@ int main()
             iMouse.x = posX, iMouse.y = posY;
         }
 
+        static time_t lastModTime4;
+        static const GLuint prog4 = glCreateProgram();
+        bool dirty = loadShader1(&lastModTime4, prog4, "../Code/bake2.frag");
+        if (dirty)
+        {
+            glDisable(GL_BLEND);
+            glDisable(GL_DEPTH_TEST);
+            glBindFramebuffer(GL_FRAMEBUFFER, bufferA);
+            glViewport(0, 0, Size, Size);
+            glClear(GL_COLOR_BUFFER_BIT);
+            glProgramUniform2f(prog4, 0, Size, Size);
+            glUseProgram(prog4);
+            glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+        }
 
-        typedef struct { myList<float> viewBuffer, meshBuffer, textBuffer; }Varying;
-        typedef Varying (plugin)(btDynamicsWorld*,
-            ivec2 iResolution, float iTime, float iTimeDelta, float iFrame, ivec4 iMouse);
+        typedef struct { myList<float> viewBuffer, meshBuffer; }Varying;
+        typedef Varying (plugin)(btDynamicsWorld*, ivec2 iResolution, float iTime, float iTimeDelta, float iFrame, ivec4 iMouse);
 
         void *f = loadPlugin("libRagdollPlugin.so", "mainAnimation");
         const Varying res = f ? ((plugin*)f)(dynamicWorld, iResolution, iTime, iTimeDelta, 0, iMouse) : Varying{};
 
         const myList<float> & V1 = dd->_lineBuffer;
-        const myList<float> & V2 = res.textBuffer;
+        const myList<float> & V2 = dd->_quadBuffer;
         const myList<float> & U1 = res.viewBuffer;
         const myList<float> & W1 = res.meshBuffer;
         const int nLines = V1.size() / 4;
@@ -122,15 +149,16 @@ int main()
             glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssbo1);
         }
 
-        static GLuint tex = loadTexture1("../Data/arial.png");
         { // texture
-            glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, tex);
+            glActiveTexture(GL_TEXTURE4);
+            glBindTexture(GL_TEXTURE_2D, tex4);
+            glActiveTexture(GL_TEXTURE5);
+            glBindTexture(GL_TEXTURE_2D, tex5);
         }
 
-        static GLuint prog1 = glCreateProgram();
-        static GLuint prog2 = glCreateProgram();
-        static GLuint prog3 = glCreateProgram();
+        static const GLuint prog1 = glCreateProgram();
+        static const GLuint prog2 = glCreateProgram();
+        static const GLuint prog3 = glCreateProgram();
         { // programs
             static time_t lastModTime1, lastModTime2, lastModTime3;
             loadShader1(&lastModTime1, prog1, "../Code/base.frag");
@@ -150,14 +178,15 @@ int main()
         glEnable(GL_DEPTH_TEST);
         glEnable(GL_BLEND);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glViewport(0, 0, iResolution.x, iResolution.y);
         glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
         glUseProgram(prog1);
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
         glDepthMask(0);
-        glDisable(GL_DEPTH_TEST);
         glUseProgram(prog2);
         glDrawArrays(GL_LINES, 0, nLines);
+        glDisable(GL_DEPTH_TEST);
         glUseProgram(prog3);
         glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, nQuads);
 

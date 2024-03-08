@@ -7,32 +7,42 @@ precision mediump float;
 #define _varying in
 #endif
 
+flat _varying int Id;
 _varying vec2 UV;
 layout (location = 0) uniform vec2 iResolution;
-layout (binding  = 0) uniform sampler2D iChannel0;
+layout (binding  = 4) uniform sampler2D iChannel[2];
 
 #ifdef _VS
 layout (location = 1) in vec4 aDst;
 layout (location = 2) in vec4 aSrc;
 void main()
 {
-    vec2 texSize = vec2(textureSize(iChannel0, 0));
-    float ar = iResolution.y / iResolution.x;
+    Id = int(aSrc.w < 0.);
+    UV = vec2(gl_VertexID&1, gl_VertexID/2).yx; // vflip change the winding
+    vec2 texSize = vec2(textureSize(iChannel[Id], 0));
 
-    UV = vec2(gl_VertexID&1, gl_VertexID/2).yx;
-    vec2 vertex = aDst.xy + aDst.zw * UV * vec2(ar, 1);
-    UV = aSrc.xy + aSrc.zw * UV;
+    vec2 pos = aDst.xy + aDst.zw * UV;
+    UV = aSrc.xy + abs(aSrc.zw) * UV;
+    pos /= iResolution;
     UV /= texSize;
 
-    // vflip
-    gl_Position = vec4(vertex.x * 2. - 1., 1. - vertex.y * 2., 0, 1);
+    gl_Position = vec4(pos * 2. - 1., 0, 1);
+    gl_Position.y *= -1.; // vflip
 }
 #else
 out vec4 fragColor;
 void main()
 {
-    float d = textureLod(iChannel0, UV, 1.).g;
-    float t = smoothstep(.4, .5, d);
-    fragColor = vec4(vec3(1), t);
+    if (Id == 0)
+    {
+        float d = textureLod(iChannel[Id], UV, 1.).r;
+        float t = smoothstep(.4, .5, d);
+        fragColor = vec4(vec3(1), t);
+    }
+    else
+    {
+        float d = textureLod(iChannel[Id], UV, 0.).r;
+        fragColor = vec4(vec3(d), 1);
+    }
 }
 #endif

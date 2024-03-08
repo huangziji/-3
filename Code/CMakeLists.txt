@@ -13,7 +13,8 @@ find_package(glad  REQUIRED)
 find_package(glm   REQUIRED)
 
 add_executable(Ragdoll main.cpp base.frag base.glsl bvh.h
-    text.glsl)
+    text.glsl
+    bake2.frag)
 target_link_libraries(Ragdoll glfw glad dl pthread
     RagdollCommon
     BulletSoftBody

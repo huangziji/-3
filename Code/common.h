@@ -38,6 +38,8 @@ public:
     myList<float> _lineBuffer;
     myList<float> _quadBuffer;
 
+    explicit myDebugDraw(const char *filename);
+
     void clearLines() override final
     {
         _lineBuffer.clear();
@@ -64,7 +66,9 @@ public:
         return DBG_DrawConstraints;
     }
 
-    void draw2dText(float x, float y, const char *textString);
+    void draw2dText(float x, float y, const char *textString, float fontSize);
+
+    void drawRectangle(btVector4 dest, btVector4 source);
 };
 
 #endif // COMMON_H

@@ -16,59 +16,6 @@ static vector<float> &operator<<(vector<float> &a, mat4 b)
 mat3 rotationAlign( vec3 d, vec3 z );
 vec3 solve( vec3 p, float r1, float r2, vec3 dir );
 
-class GuiDraw
-{
-    vector<int> _fontInfo;
-public:
-    vector<float> _textBuffer;
-    GuiDraw()
-    {
-        _fontInfo = loadFnt("../Data/arial.fnt");
-    }
-
-    void clearText() { _textBuffer.clear(); }
-    void draw2dText(vec2 location, const char *textString, float fontSize, float spacing);
-};
-
-void GuiDraw::draw2dText(vec2 location, const char *textString, float fontSize, float spacing)
-{
-    float xpos = 0., ypos = 0.;
-    const int nChars = strlen(textString);
-    for (int i=0; i<nChars; i++)
-    {
-        const char id = textString[i];
-        int x    = _fontInfo[id*7+0];
-        int y    = _fontInfo[id*7+1];
-        int w    = _fontInfo[id*7+2];
-        int h    = _fontInfo[id*7+3];
-        int xoff = _fontInfo[id*7+4];
-        int yoff = _fontInfo[id*7+5];
-        int xadv = _fontInfo[id*7+6];
-
-        switch (id) {
-        case ' ':
-            xadv = 25;
-            break;
-        case '\t':
-            xadv = 25 * 5;
-            break;
-        case '\n':
-            xadv = 0,
-            xpos = 0.0f,
-            ypos += fontSize * 25 / spacing;
-            break;
-        default:
-            _textBuffer <<
-                    location.x + xpos+xoff*fontSize,
-                    location.y + ypos+yoff*fontSize,
-                    w*fontSize, h*fontSize, x, y, w, h;
-            break;
-        }
-
-        xpos += fontSize * xadv * spacing;
-    }
-}
-
 typedef struct { int index1, index2; btVector3 halfExtend; }BodyPartData;
 extern const BodyPartData bodyPartData[17];
 extern const vec3 restPose[22];
@@ -87,14 +34,13 @@ Matrix makeIdentity()
     dmat4 a(1);
     return (Matrix&)a;
 }
+
 IScene *loadFbx(const char *filename);
 void EvalPose( vector<vec3> & channels, float t, const IScene *scene,
                   const Object *node, Matrix parentWorld = makeIdentity());
 
-
 extern "C" Varying mainAnimation(btDynamicsWorld *dynamicsWorld,
-            ivec2 iResolution, float iTime, float iTimeDelta, float iFrame, ivec4 iMouse
-                                 )
+            ivec2 iResolution, float iTime, float iTimeDelta, float iFrame, ivec4 iMouse)
 {
     static GLuint frame = 0;
     if (frame++ == 0)
@@ -127,11 +73,8 @@ extern "C" Varying mainAnimation(btDynamicsWorld *dynamicsWorld,
     vec3 ro = ta + vec3(sin(ti),.3,cos(ti)) * 2.f;
     viewBuffer << ta.x, ta.y, ta.z, 0, ro.x, ro.y, ro.z, 0;
 
-    static const IScene *fbxScene = loadFbx("../Data/Standard Walk.fbx");
-    static GuiDraw gd;
-
     dynamicsWorld->stepSimulation(iTimeDelta);
-    btIDebugDraw *dd = dynamicsWorld->getDebugDrawer();
+    myDebugDraw *dd = dynamic_cast<myDebugDraw*>(dynamicsWorld->getDebugDrawer());
     dd->clearLines();
     dynamicsWorld->debugDrawWorld();
     // dd->drawArc(btVector3(0,1,0), btVector3(0,1,0), btVector3(0,0,1), .5, .5, 0, M_PI*2, btVector3(1,1,0), false);
@@ -139,15 +82,18 @@ extern "C" Varying mainAnimation(btDynamicsWorld *dynamicsWorld,
     static float fps = 0;
     if ((frame & 0xf) == 0) fps = 1. / iTimeDelta;
     char text[32];
-    sprintf(text, "%.2f\t\t%.1f fps\t\t%d x %d", iTime, fps, iResolution.x, iResolution.y);
-    textBuffer.clear();
-    gd.clearText();
-    gd.draw2dText(vec2(.1,.9), text, .5/512, .8 * 9./16.);
-    textBuffer = gd._textBuffer;
+    sprintf(text, "%.2f\t\t%.1f fps\t\t%dx%d", iTime, fps, iResolution.x, iResolution.y);
+
+    btVector4 dest = { iResolution.x * 0.5 - iResolution.y * 0.5,
+        0, iResolution.y, iResolution.y, };
+    btVector4 source = { 0,0,512,512 };
+    dd->drawRectangle(dest, source);
+    dd->draw2dText(.1 * iResolution.x, .9 * iResolution.y, text, 20);
 
     // keyframe animation
     const int nJoints = sizeof restPose / sizeof *restPose;
     vec3 local[nJoints];
+    local[0] = restPose[0];
     for (ivec2 e : skeletonMap)
     {
         int p = e[0], c = e[1];
@@ -167,14 +113,19 @@ extern "C" Varying mainAnimation(btDynamicsWorld *dynamicsWorld,
     vec3 jointPos[nJoints] = {};
 
     vector<vec3> channels;
-    channels.resize(7);
+    channels.resize(11);
+    static const IScene *fbxScene = loadFbx("../Data/Standard Walk.fbx");
     EvalPose(channels, iTime, fbxScene, fbxScene->getRoot());
+
+    vec3 local2 = channels[2] * length(local[HEAD]) + channels[1];
+    dd->drawSphere((btVector3&)local2, .02, {});
+    dd->drawSphere((btVector3&)(channels[1]), .02, {});
 
     if (1)
     {
-        jointPos[HIPS] = channels[0];
+        jointPos[HIPS] = channels[0] * length(local[HIPS]);
         jointPos[NECK] = channels[1];
-        jointPos[HEAD] = channels[2];
+        jointPos[HEAD] = channels[2] * length(local[HEAD]) + channels[1];
         jointPos[FOOT_L] = channels[3];
         jointPos[HAND_L] = channels[4];
         jointPos[FOOT_R] = channels[5];

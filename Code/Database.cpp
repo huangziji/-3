@@ -45,6 +45,16 @@ IScene *loadFbx(const char *filename)
     return fbxScene;
 }
 
+static float length(Vec3 a)
+{
+    return sqrt(a.x*a.x + a.y*a.y + a.z*a.z);
+}
+
+static Vec3 operator +(Vec3 a, Vec3 b)
+{
+    return { a.x + b.x, a.y + b.y, a.z + b.z };
+}
+
 void EvalPose( vector<vec3> & channels, float t, const IScene *scene,
                   const Object *node, Matrix parentWorld = makeIdentity())
 {
@@ -65,7 +75,7 @@ void EvalPose( vector<vec3> & channels, float t, const IScene *scene,
     }
     Matrix world = parentWorld * node->evalLocal(translation, rotation);
 
-    static unsigned int Keywords[] = {
+    static unsigned int data[] = {
         btHashString("mixamorig:Hips").getHash(),
         btHashString("mixamorig:Neck").getHash(),
         btHashString("mixamorig:Head").getHash(),
@@ -73,16 +83,30 @@ void EvalPose( vector<vec3> & channels, float t, const IScene *scene,
         btHashString("mixamorig:LeftHand").getHash(),
         btHashString("mixamorig:RightFoot").getHash(),
         btHashString("mixamorig:RightHand").getHash(),
+        btHashString("mixamorig:LeftShoulder").getHash(),
+        btHashString("mixamorig:RightShoulder").getHash(),
+        btHashString("mixamorig:LeftUpLeg").getHash(),
+        btHashString("mixamorig:RightUpLeg").getHash(),
     };
 
     vector<unsigned int> keywords;
-    keywords.initializeFromBuffer(Keywords, 7, 7);
-
+    keywords.initializeFromBuffer(data, 11, 11);
     int index = keywords.findLinearSearch(btHashString(node->name).getHash());
     if (index < keywords.size())
     {
-        btVector3 pos = btVector3( world.m[12], world.m[13], world.m[14] ) * .01;
-        channels[index] = { pos.x(), pos.y(), pos.z() };
+        channels[index] = vec3( world.m[12], world.m[13], world.m[14] );
+        switch (index) {
+        case 0:
+            channels[0] /= length(node->getLocalTranslation());
+            break;
+        case 2:
+            channels[2] -= channels[1]*100.f;
+            channels[2] /= length(node->getLocalTranslation());
+            break;
+        default:
+            channels[index] *= .01;
+            break;
+        }
     }
 
     for (int i=0; node->resolveObjectLink(i); i++)

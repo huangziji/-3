@@ -267,3 +267,66 @@ float spline( const float *k, int n, float t )
     vec4 j = *(vec4*)k;
     return dot(f, j);
 }
+
+/************************************************************
+ *                       DebugDraw                          *
+************************************************************/
+
+#include "common.h"
+
+myDebugDraw::myDebugDraw(const char *filename)
+{
+    _fontInfo = loadFnt(filename);
+    assert(_fontInfo.size());
+}
+
+void myDebugDraw::drawRectangle(btVector4 dest, btVector4 source)
+{
+    _quadBuffer <<
+            dest.x(), dest.y(), dest.z(), dest.w(),
+            source.x(), source.y(), source.z(), source.w() * -1;
+}
+
+void myDebugDraw::draw2dText(float xloc, float yloc, const char *textString, float fontSize)
+{
+    const float spacing = .8;
+
+    const int spaceXadv = _fontInfo[int('_')*7+6];
+    fontSize /= spaceXadv * 1.8;
+
+    float xpos = 0., ypos = 0.;
+    const int nChars = strlen(textString);
+    for (int i=0; i<nChars; i++)
+    {
+        const char id = textString[i];
+        int x    = _fontInfo[id*7+0];
+        int y    = _fontInfo[id*7+1];
+        int w    = _fontInfo[id*7+2];
+        int h    = _fontInfo[id*7+3];
+        int xoff = _fontInfo[id*7+4];
+        int yoff = _fontInfo[id*7+5];
+        int xadv = _fontInfo[id*7+6];
+
+        switch (id) {
+        case ' ':
+            xadv = spaceXadv;
+            break;
+        case '\t':
+            xadv = spaceXadv * 5;
+            break;
+        case '\n':
+            xadv = 0,
+            xpos = 0.0f,
+            ypos += fontSize * spaceXadv * 1.8 * spacing;
+            break;
+        default:
+            _quadBuffer <<
+                    xloc + xpos + xoff*fontSize,
+                    yloc + ypos + yoff*fontSize,
+                    w*fontSize, h*fontSize, x, y, w, h;
+            break;
+        }
+
+        xpos += fontSize * xadv * spacing;
+    }
+}
