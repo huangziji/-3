@@ -53,11 +53,11 @@ int main()
     }
 
     GLuint bufferA, tex5;
-    const int Size = 512;
     {
+        const int size = 9*50;
         glGenTextures(1, &tex5);
         glBindTexture(GL_TEXTURE_2D, tex5);
-        glTexStorage2D(GL_TEXTURE_2D, 1, GL_R8, Size, Size);
+        glTexStorage2D(GL_TEXTURE_2D, 1, GL_R8, size, size);
         glGenFramebuffers(1, &bufferA);
         glBindFramebuffer(GL_FRAMEBUFFER, bufferA);
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex5, 0);
@@ -92,12 +92,13 @@ int main()
         bool dirty = loadShader1(&lastModTime4, prog4, "../Code/bake2.frag");
         if (dirty)
         {
+            const int size = iResolution.y;
             glDisable(GL_BLEND);
             glDisable(GL_DEPTH_TEST);
             glBindFramebuffer(GL_FRAMEBUFFER, bufferA);
-            glViewport(0, 0, Size, Size);
+            glViewport(0, 0, size, size);
             glClear(GL_COLOR_BUFFER_BIT);
-            glProgramUniform2f(prog4, 0, Size, Size);
+            glProgramUniform2f(prog4, 0, size, size);
             glUseProgram(prog4);
             glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
         }

@@ -42,7 +42,7 @@ void main()
     else
     {
         float d = textureLod(iChannel[Id], UV, 0.).r;
-        fragColor = vec4(vec3(d), 1);
+        fragColor = vec4(vec3(1), d);
     }
 }
 #endif

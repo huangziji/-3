@@ -86,8 +86,11 @@ extern "C" Varying mainAnimation(btDynamicsWorld *dynamicsWorld,
 
     btVector4 dest = { iResolution.x * 0.5 - iResolution.y * 0.5,
         0, iResolution.y, iResolution.y, };
-    btVector4 source = { 0,0,512,512 };
+    btVector4 source = { 0,0,iResolution.y,iResolution.y };
     dd->drawRectangle(dest, source);
+    const int size = iResolution.y/16;
+    dd->drawRectangle({iResolution.x * .05, iResolution.y * (.9-.01), 27,27},
+                      { size*2,0, size, size });
     dd->draw2dText(.1 * iResolution.x, .9 * iResolution.y, text, 20);
 
     // keyframe animation
