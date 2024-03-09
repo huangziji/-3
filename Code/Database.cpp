@@ -55,8 +55,8 @@ static Vec3 operator +(Vec3 a, Vec3 b)
     return { a.x + b.x, a.y + b.y, a.z + b.z };
 }
 
-void EvalPose( vector<vec3> & channels, float t, const IScene *scene,
-                  const Object *node, Matrix parentWorld = makeIdentity())
+void EvalPose( vector<vec3> & out, vector<float> & outLengths, float t, const IScene *scene,
+                  const Object *node, float len = 0, Matrix parentWorld = makeIdentity())
 {
 
     t = mod(t, 1.2f);
@@ -74,6 +74,7 @@ void EvalPose( vector<vec3> & channels, float t, const IScene *scene,
         rotation = channel2->getNodeLocalTransform(t);
     }
     Matrix world = parentWorld * node->evalLocal(translation, rotation);
+    len += length(node->getLocalTranslation());
 
     static unsigned int data[] = {
         btHashString("mixamorig:Hips").getHash(),
@@ -83,10 +84,11 @@ void EvalPose( vector<vec3> & channels, float t, const IScene *scene,
         btHashString("mixamorig:LeftHand").getHash(),
         btHashString("mixamorig:RightFoot").getHash(),
         btHashString("mixamorig:RightHand").getHash(),
-        btHashString("mixamorig:LeftShoulder").getHash(),
-        btHashString("mixamorig:RightShoulder").getHash(),
+
         btHashString("mixamorig:LeftUpLeg").getHash(),
+        btHashString("mixamorig:LeftShoulder").getHash(),
         btHashString("mixamorig:RightUpLeg").getHash(),
+        btHashString("mixamorig:RightShoulder").getHash(),
     };
 
     vector<unsigned int> keywords;
@@ -94,24 +96,13 @@ void EvalPose( vector<vec3> & channels, float t, const IScene *scene,
     int index = keywords.findLinearSearch(btHashString(node->name).getHash());
     if (index < keywords.size())
     {
-        channels[index] = vec3( world.m[12], world.m[13], world.m[14] );
-        switch (index) {
-        case 0:
-            channels[0] /= length(node->getLocalTranslation());
-            break;
-        case 2:
-            channels[2] -= channels[1]*100.f;
-            channels[2] /= length(node->getLocalTranslation());
-            break;
-        default:
-            channels[index] *= .01;
-            break;
-        }
+        out[index] = vec3( world.m[12], world.m[13], world.m[14] );
+        outLengths[index] = len;
     }
 
     for (int i=0; node->resolveObjectLink(i); i++)
     {
         const Object *child = node->resolveObjectLink(i);
-        if (child->isNode()) EvalPose(channels, t, scene, child, world);
+        if (child->isNode()) EvalPose(out, outLengths, t, scene, child, len, world);
     }
 }

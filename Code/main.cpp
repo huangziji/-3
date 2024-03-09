@@ -12,6 +12,18 @@ static void error_callback(int _, const char* desc)
     fprintf(stderr, "ERROR: %s\n", desc);
 }
 
+static void joystick_callback(int jid, int event)
+{
+    if (event == GLFW_CONNECTED)
+    {
+        printf("INFO: The joystick %d was connected\n", jid);
+    }
+    else if (event == GLFW_DISCONNECTED)
+    {
+        printf("INFO: The joystick %d was disconnected\n", jid);
+    }
+}
+
 int main()
 {
     ma_result result;
@@ -51,6 +63,13 @@ int main()
         glfwSetWindowPos(window1, screenWidth-RES_X, 0);
         glfwSetWindowAttrib(window1, GLFW_FLOATING, GLFW_TRUE);
     }
+
+    glfwSetJoystickCallback(joystick_callback);
+    int isGamepad = glfwJoystickIsGamepad(GLFW_JOYSTICK_1);
+    int present = glfwJoystickPresent(GLFW_JOYSTICK_1);
+    const char* name = glfwGetJoystickName(GLFW_JOYSTICK_1);
+    printf("JoystickName : %s\nPresent : %s\nIs GamePad : %s\n",
+           name, present?"true":"false", isGamepad?"true":"false");
 
     GLuint bufferA, tex5;
     {
@@ -108,6 +127,37 @@ int main()
 
         void *f = loadPlugin("libRagdollPlugin.so", "mainAnimation");
         const Varying res = f ? ((plugin*)f)(dynamicWorld, iResolution, iTime, iTimeDelta, 0, iMouse) : Varying{};
+
+#if 0
+        { // joystick
+            int count;
+            char text[128];
+            char *p = text;
+
+            const float* axes = glfwGetJoystickAxes(GLFW_JOYSTICK_1, &count);
+            sprintf(p, "\n%d  ", count); p += 4;
+            for (int i=0; i<count; i++)
+            {
+                sprintf(p, "%2.2f  ", axes[i]); p += 6;
+            }
+
+            const unsigned char* buttons = glfwGetJoystickButtons(GLFW_JOYSTICK_1, &count);
+            sprintf(p, "\n%d  ", count); p += 4;
+            for (int i=0; i<count; i++)
+            {
+                sprintf(p, "%d ", buttons[i]); p += 2;
+            }
+
+            const unsigned char* hats = glfwGetJoystickHats(GLFW_JOYSTICK_1, &count);
+            sprintf(p, "\n%d  ", count); p += 4;
+            for (int i=0; i<count; i++)
+            {
+                sprintf(p, "%d ", hats[i]); p += 2;
+            }
+
+            dd->draw2dText(iResolution.x*.1, iResolution.y*.5, text, 20);
+        }
+#endif
 
         const myList<float> & V1 = dd->_lineBuffer;
         const myList<float> & V2 = dd->_quadBuffer;
@@ -185,9 +235,9 @@ int main()
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
         glDepthMask(0);
+        glDisable(GL_DEPTH_TEST);
         glUseProgram(prog2);
         glDrawArrays(GL_LINES, 0, nLines);
-        glDisable(GL_DEPTH_TEST);
         glUseProgram(prog3);
         glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, nQuads);
 

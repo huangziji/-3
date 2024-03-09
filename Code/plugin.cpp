@@ -36,8 +36,8 @@ Matrix makeIdentity()
 }
 
 IScene *loadFbx(const char *filename);
-void EvalPose( vector<vec3> & channels, float t, const IScene *scene,
-                  const Object *node, Matrix parentWorld = makeIdentity());
+void EvalPose( vector<vec3> & channels, vector<float> & lens, float t, const IScene *scene,
+                  const Object *node, float len = 0, Matrix parentWorld = makeIdentity());
 
 extern "C" Varying mainAnimation(btDynamicsWorld *dynamicsWorld,
             ivec2 iResolution, float iTime, float iTimeDelta, float iFrame, ivec4 iMouse)
@@ -89,9 +89,12 @@ extern "C" Varying mainAnimation(btDynamicsWorld *dynamicsWorld,
     btVector4 source = { 0,0,iResolution.y,iResolution.y };
     dd->drawRectangle(dest, source);
     const int size = iResolution.y/16;
-    dd->drawRectangle({iResolution.x * .05, iResolution.y * (.9-.01), 27,27},
+    dd->drawRectangle({iResolution.x * .02, iResolution.y * (.9-.01), size,size},
+                      { size*4,0, size, size });
+    dd->drawRectangle({iResolution.x * .05, iResolution.y * (.9-.01), size,size},
                       { size*2,0, size, size });
     dd->draw2dText(.1 * iResolution.x, .9 * iResolution.y, text, 20);
+    // dd->drawRectangle({ iResolution.x * .02, iResolution.y * .9, size, size*30 }, { size*5,0, size, size });
 
     // keyframe animation
     const int nJoints = sizeof restPose / sizeof *restPose;
@@ -115,35 +118,35 @@ extern "C" Varying mainAnimation(btDynamicsWorld *dynamicsWorld,
 
     vec3 jointPos[nJoints] = {};
 
-    vector<vec3> channels;
-    channels.resize(11);
     static const IScene *fbxScene = loadFbx("../Data/Standard Walk.fbx");
-    EvalPose(channels, iTime, fbxScene, fbxScene->getRoot());
 
-    vec3 local2 = channels[2] * length(local[HEAD]) + channels[1];
-    dd->drawSphere((btVector3&)local2, .02, {});
-    dd->drawSphere((btVector3&)(channels[1]), .02, {});
+    vector<vec3> channels;
+    vector<float> lengths;
+    channels.resize(11);
+    lengths.resize(11);
+    EvalPose(channels, lengths, iTime, fbxScene, fbxScene->getRoot());
 
-    if (1)
-    {
-        jointPos[HIPS] = channels[0] * length(local[HIPS]);
-        jointPos[NECK] = channels[1];
-        jointPos[HEAD] = channels[2] * length(local[HEAD]) + channels[1];
-        jointPos[FOOT_L] = channels[3];
-        jointPos[HAND_L] = channels[4];
-        jointPos[FOOT_R] = channels[5];
-        jointPos[HAND_R] = channels[6];
-    }
-    else
+
+
+#if 0
     {
         for (int i=0; i<nJoints; i++)
             jointPos[i] = restPose[i];
     }
-
-    // if (0)
+#else
     { // solve
+        {
+            vec3 a = channels[0] / lengths[0];
+            vec3 b = (channels[1]-channels[0]) / (lengths[1]-lengths[0]);
+            vec3 c = (channels[2]-channels[1]) / (lengths[2]-lengths[1]);
+
+            float lenSpine = length(local[NECK]) + length(local[NECK-1]) + length(local[NECK-2]);
+            jointPos[HIPS] = a * length(local[HIPS]);
+            jointPos[NECK] = jointPos[HIPS] + b * lenSpine;
+            jointPos[HEAD] = jointPos[NECK] + c * length(local[HEAD]);
+
+        }
         { // position constaints 1
-            jointPos[HEAD] = jointPos[NECK] + local[HEAD];
             jointPos[HEAD+1] = jointPos[HEAD] + local[HEAD+1];
         }
         { // 3 bone ik
@@ -176,22 +179,42 @@ extern "C" Varying mainAnimation(btDynamicsWorld *dynamicsWorld,
             jointPos[FOOT_L-2] = local[FOOT_L-2] + jointPos[HIPS];
             jointPos[HAND_R-2] = local[HAND_R-2] + jointPos[NECK-1];
             jointPos[HAND_L-2] = local[HAND_L-2] + jointPos[NECK-1];
+
         }
+
+        vec3 e = (channels[3] - channels[7]) / (lengths[3]-lengths[7]);
+        vec3 f = (channels[4] - channels[8]) / (lengths[4]-lengths[8]);
+        vec3 g = (channels[5] - channels[9]) / (lengths[5]-lengths[9]);
+        vec3 h = (channels[6] - channels[10]) / (lengths[6]-lengths[10]);
+        jointPos[FOOT_L] = jointPos[FOOT_L-2] + e;
+        jointPos[HAND_L] = jointPos[HAND_L-2] + f;
+        jointPos[FOOT_R] = jointPos[FOOT_R-2] + g;
+        jointPos[HAND_R] = jointPos[HAND_R-2] + h;
+
         // limbs
+        vec3 ppp[] = { e,f,g,h };
         vec3 dir[] = { {1,0,0},{-1,0,0},{1,0,0},{-1,0,0} };
         int i = 0;
         for (int handle : { 8,12,16,20 })
         {
-            vec3 o = jointPos[handle-2];
-            vec3 p = jointPos[handle];
             float r1 = length(local[handle-1]);
             float r2 = length(local[handle]);
+
+            vec3 o = jointPos[handle-2];
+            vec3 p = o + ppp[i] * (r1 + r2);
+            jointPos[handle] = p;
             vec3 x = o + solve(p - o, r1, r2, dir[i++]);
             jointPos[handle-1] = x;
 
             mat3 swi = rotationAlign( (p-x)/r2, local[handle]/r2 );
             jointPos[handle+1] = p + local[handle+1] * swi;
         }
+    }
+#endif
+
+    for (auto i : { 0, 3, 4, 8, 12, 16, 20 })
+    {
+        dd->drawSphere((btVector3&)(jointPos[i]), .02, {});
     }
 
     meshBuffer.clear();
