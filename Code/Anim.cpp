@@ -168,9 +168,9 @@ int CreateRagdoll(btDynamicsWorld *dynamicsWorld)
         joint->setLimit(0, 0, 0);
         joint->setLimit(1, 0, 0);
         joint->setLimit(2, 0, 0);
-        joint->setLimit(3, -M_PI_2, 0);
-        joint->setLimit(4, 0, M_PI * 2);
-        joint->setLimit(5, 0, M_PI * 2);
+        joint->setLimit(3, 0, 0);
+        joint->setLimit(4, 0, 0);
+        joint->setLimit(5, 0, 0);
     }
     return colliderId;
 }

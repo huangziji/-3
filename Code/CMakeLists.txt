@@ -31,6 +31,7 @@ target_link_directories(Ragdoll PRIVATE
 target_include_directories(Ragdoll PRIVATE
     ${CMAKE_INCLUDE_PATH}
     ${CMAKE_CURRENT_SOURCE_DIR}/../External/
+    ${CMAKE_CURRENT_SOURCE_DIR}/../imgui-1.90.4/
 )
 add_library(RagdollCommon common.cpp common.h
     miniaudio.cpp)
@@ -38,6 +39,7 @@ target_include_directories(RagdollCommon PRIVATE
     ${CMAKE_PREFIX_PATH}/include
     ${CMAKE_INCLUDE_PATH}
     ${CMAKE_CURRENT_SOURCE_DIR}/../External/
+    ${CMAKE_CURRENT_SOURCE_DIR}/../imgui-1.90.4/
 )
 target_compile_options(RagdollCommon PRIVATE -fPIC)
 

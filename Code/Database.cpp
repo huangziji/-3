@@ -17,6 +17,11 @@ static Matrix operator*(Matrix a, Matrix b)
     return (Matrix&)c;
 }
 
+static float length(Vec3 a)
+{
+    return sqrt(a.x*a.x + a.y*a.y + a.z*a.z);
+}
+
 IScene *loadFbx(const char *filename)
 {
     FILE *f = fopen(filename, "rb");
@@ -45,21 +50,57 @@ IScene *loadFbx(const char *filename)
     return fbxScene;
 }
 
-static float length(Vec3 a)
+vec3 GetRootMotionAverageVelocity(const IScene *scene)
 {
-    return sqrt(a.x*a.x + a.y*a.y + a.z*a.z);
+    const AnimationLayer *layer = scene->getAnimationStack(0)->getLayer(0);
+    for (int i=0; layer->getCurveNode(i); i++)
+    {
+        const AnimationCurveNode *channel = layer->getCurveNode(i);
+        if (channel->name[0] == 'T')
+        {
+            vec3 translation = vec3(0);
+            const int N = channel->getCurve(0)->getKeyCount() - 1;
+            for (int i=0; i<N; i++)
+            {
+                float x0 = channel->getCurve(0)->getKeyValue()[i+0];
+                float y0 = channel->getCurve(1)->getKeyValue()[i+0];
+                float z0 = channel->getCurve(2)->getKeyValue()[i+0];
+                float x1 = channel->getCurve(0)->getKeyValue()[i+1];
+                float y1 = channel->getCurve(1)->getKeyValue()[i+1];
+                float z1 = channel->getCurve(2)->getKeyValue()[i+1];
+                translation.x += x1-x0;
+                translation.y += y1-y0;
+                translation.z += z1-z0;
+            }
+            translation /= N;
+            return vec3(translation.x, translation.y, translation.z);
+        }
+    }
+
+    return vec3(0);
 }
 
-static Vec3 operator +(Vec3 a, Vec3 b)
+float GetAnimationDuration(const IScene *scene)
 {
-    return { a.x + b.x, a.y + b.y, a.z + b.z };
+    const AnimationLayer *layer = scene->getAnimationStack(0)->getLayer(0);
+    for (int i=0; layer->getCurveNode(i); i++)
+    {
+        const AnimationCurveNode *channel = layer->getCurveNode(i);
+        if (channel)
+        {
+            int n = channel->getCurve(0)->getKeyCount();
+            float f = channel->getCurve(0)->getKeyTime()[n - 1];
+            return fbxTimeToSeconds(f);
+        }
+    }
+
+    return 0;
 }
 
-void EvalPose( vector<vec3> & out, vector<float> & outLengths, float t, const IScene *scene,
-                  const Object *node, float len = 0, Matrix parentWorld = makeIdentity())
+void EvalPoseRecursive( vector<vec3> & out, vector<float> & outLengths, vector<vec3> & axes,
+               float t, const IScene *scene, const Object *node,
+               float len = 0, Matrix parentWorld = makeIdentity())
 {
-
-    t = mod(t, 1.2f);
     Vec3 translation = node->getLocalTranslation();
     Vec3 rotation = node->getLocalRotation();
     const AnimationLayer *layer = scene->getAnimationStack(0)->getLayer(0);
@@ -98,11 +139,18 @@ void EvalPose( vector<vec3> & out, vector<float> & outLengths, float t, const IS
     {
         out[index] = vec3( world.m[12], world.m[13], world.m[14] );
         outLengths[index] = len;
+        vec3 q = vec3( parentWorld.m[12], parentWorld.m[13], parentWorld.m[14] );
+        axes[index] = out[index] - q;
     }
 
     for (int i=0; node->resolveObjectLink(i); i++)
     {
         const Object *child = node->resolveObjectLink(i);
-        if (child->isNode()) EvalPose(out, outLengths, t, scene, child, len, world);
+        if (child->isNode()) EvalPoseRecursive(out, outLengths, axes, t, scene, child, len, world);
     }
+}
+
+void EvalPose(vector<vec3> &out, vector<float> &outLengths, vector<vec3> &axes, float t, const IScene *scene)
+{
+    EvalPoseRecursive(out, outLengths, axes, t, scene, scene->getRoot());
 }

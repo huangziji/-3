@@ -129,7 +129,7 @@ unsigned int loadTexture1(const char *filename)
 bool recordVideo(int nFrame)
 {
     static const char fmt[] = "$HOME/.spotdl/ffmpeg"
-            " -r 60 -f rawvideo -pix_fmt rgb24 -s %dx%d"
+            " -r 40 -f rawvideo -pix_fmt rgb24 -s %dx%d"
             " -i pipe: -c:v libx264 -c:a aac"
             " -preset fast -y -pix_fmt yuv420p -crf 21 -vf vflip 1.mp4";
 
@@ -287,9 +287,15 @@ void myDebugDraw::drawRectangle(btVector4 dest, btVector4 source)
             source.x(), source.y(), source.z(), source.w() * -1;
 }
 
-void myDebugDraw::draw2dText(float xloc, float yloc, const char *textString, float fontSize)
+void myDebugDraw::draw2dText(float xloc, float yloc, float fontSize, const char *format...)
 {
     const float spacing = .8;
+
+    char textString[128];
+    va_list args;
+    va_start(args, format);
+    vsprintf(textString, format, args);
+    va_end(args);
 
     const int spaceXadv = _fontInfo[int('_')*7+6];
     fontSize /= spaceXadv * 1.8;

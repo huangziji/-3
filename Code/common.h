@@ -66,7 +66,7 @@ public:
         return DBG_DrawConstraints;
     }
 
-    void draw2dText(float x, float y, const char *textString, float fontSize);
+    void draw2dText(float x, float y, float fontSize, const char *textString...);
 
     void drawRectangle(btVector4 dest, btVector4 source);
 };

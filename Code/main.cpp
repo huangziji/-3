@@ -7,6 +7,10 @@
 #include <miniaudio.h>
 #include <btBulletDynamicsCommon.h>
 
+#include <imgui.h>
+#include <backends/imgui_impl_glfw.h>
+#include <backends/imgui_impl_opengl3.h>
+
 static void error_callback(int _, const char* desc)
 {
     fprintf(stderr, "ERROR: %s\n", desc);
@@ -96,7 +100,7 @@ int main()
         static int iFrame = -1;
         ivec4 iMouse;
         {
-            glfwGetWindowSize(window1, &iResolution.x, &iResolution.y);
+            glfwGetFramebufferSize(window1, &iResolution.x, &iResolution.y);
             static float lastFrameTime = 0;
             iTimeDelta = iTime - lastFrameTime;
             lastFrameTime = iTime;
@@ -123,10 +127,11 @@ int main()
         }
 
         typedef struct { myList<float> viewBuffer, meshBuffer; }Varying;
-        typedef Varying (plugin)(btDynamicsWorld*, ivec2 iResolution, float iTime, float iTimeDelta, float iFrame, ivec4 iMouse);
+        typedef bool (plugin)(Varying *, btDynamicsWorld*, ivec2 iResolution, float iTime, float iTimeDelta, float iFrame, ivec4 iMouse);
 
+        Varying res;
         void *f = loadPlugin("libRagdollPlugin.so", "mainAnimation");
-        const Varying res = f ? ((plugin*)f)(dynamicWorld, iResolution, iTime, iTimeDelta, 0, iMouse) : Varying{};
+        if (f) ((plugin*)f)(&res, dynamicWorld, iResolution, iTime, iTimeDelta, 0, iMouse);
 
 #if 0
         { // joystick
@@ -235,15 +240,34 @@ int main()
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
         glDepthMask(0);
-        glDisable(GL_DEPTH_TEST);
         glUseProgram(prog2);
         glDrawArrays(GL_LINES, 0, nLines);
+
+        glDisable(GL_DEPTH_TEST);
         glUseProgram(prog3);
         glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, nQuads);
 
+        if (iFrame == 0)
+        {
+            IMGUI_CHECKVERSION();
+            ImGui::CreateContext();
+            ImGuiIO& io = ImGui::GetIO(); (void)io;
+            ImGui_ImplGlfw_InitForOpenGL(window1, true);
+            ImGui_ImplOpenGL3_Init("#version 130");
+        }
+
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
+        ImGui::Begin("Hello World");
+        ImGui::Text("ss");
+        ImGui::End();
+        ImGui::Render();
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
         glfwSwapBuffers(window1);
         glfwPollEvents();
-        // if (!recordVideo(5 / iTimeDelta)) break;
+        // if (!recordVideo(0xfff)) break;
     }
 
     ma_engine_uninit(&engine);
